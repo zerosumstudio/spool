@@ -18,7 +18,7 @@ interface HelperModule {
 	spoolApp: (
 		name: string,
 		from?: string,
-		command?: 'build' | 'serve'
+		command?: 'build' | 'serve',
 	) => {
 		server: {
 			port: number
@@ -61,7 +61,7 @@ let helper: HelperModule
 function plantDeclaredDeps(root: string, deps: string[]) {
 	writeFileSync(
 		join(root, 'package.json'),
-		JSON.stringify({ dependencies: Object.fromEntries(deps.map(dep => [dep, '*'])) })
+		JSON.stringify({ dependencies: Object.fromEntries(deps.map(dep => [dep, '*'])) }),
 	)
 }
 
@@ -149,7 +149,7 @@ describe('generated spool.vite.ts', () => {
 		process.env.SPOOL_REMOTE_DASHBOARD = 'https://staging.example.com/mf-manifest.json'
 		const app = helper.spoolApp('shell', dir)
 		expect(app.federation.remotes?.dashboard).toBe(
-			'https://staging.example.com/mf-manifest.json'
+			'https://staging.example.com/mf-manifest.json',
 		)
 	})
 
@@ -179,8 +179,8 @@ describe('generated spool.vite.ts', () => {
 					shell: host({ remotes: ['dashboard'] }),
 					dashboard: remote({ remotes: ['billing'] }),
 					billing: remote({ path: 'apps/billing', port: 5175 }),
-				})
-			)
+				}),
+			),
 		)
 
 		const app = helper.spoolApp('dashboard', consumer)
@@ -203,7 +203,7 @@ describe('generated spool.vite.ts', () => {
 			JSON.stringify({
 				...manifest,
 				apps: { shell: { ...host({ remotes: ['ghost'] }) } },
-			})
+			}),
 		)
 		expect(() => helper.spoolApp('shell', bad)).toThrow('unknown remote "ghost"')
 		removeDir(bad)
@@ -234,7 +234,7 @@ describe('generated spool.vite.ts', () => {
 		plantDeclaredDeps(pinned, ['react', 'react-dom'])
 		writeFileSync(
 			join(pinned, 'spool.json'),
-			JSON.stringify({ ...manifest, shareStrategy: 'version-first' })
+			JSON.stringify({ ...manifest, shareStrategy: 'version-first' }),
 		)
 
 		expect(helper.spoolApp('shell', pinned).federation.shareStrategy).toBe('version-first')

@@ -19,7 +19,7 @@ export function playwrightFiles(m: Manifest, extras: TemplateExtras): FileMap {
 	const remoteChecks = host.remotes
 		.map(
 			remote => `
-  await expect(page.getByRole("heading", { name: "${remote}" })).toBeVisible();`
+  await expect(page.getByRole("heading", { name: "${remote}" })).toBeVisible();`,
 		)
 		.join('')
 	// Proves the remotes actually loaded over federation, not just that the host rendered.
@@ -96,7 +96,7 @@ function composedSpec(hostName: string, remotes: string[], stateExample: boolean
   await page.getByRole("button", { name: "${name}" }).click();
   await expect(page.getByTestId("${NAV_PATH_TESTID}")).toHaveText("${path}");
   await expect(page.locator("main").getByText(/exposed via Module Federation/)).toBeVisible();
-  await expect(page.locator("main strong").first()).toHaveText("${name}");`
+  await expect(page.locator("main strong").first()).toHaveText("${name}");`,
 		)
 		.join('')
 	const [first, second] = routes

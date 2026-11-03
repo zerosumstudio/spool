@@ -170,7 +170,7 @@ function workspacePackageJson(m: Manifest): string {
 }
 
 function workspaceReadme(m: Manifest): string {
-	return `# ${m.name}\n\nMicro-frontend workspace scaffolded with [spool](https://github.com/bkincz/spool).\n\nAll federation wiring lives in \`spool.json\`; each app's \`vite.config.ts\` reads it\nthrough \`spool.vite.ts\` at startup, so editing the manifest is all you ever do.\n\n## Commands\n\n\`\`\`bash\n${m.packageManager} install    # install all apps\nspool dev           # run host + remotes together\nspool build         # coordinated production build\nspool preview       # serve the built apps locally\nspool deploy        # run each app's deploy command\nspool add <name>    # add a host or remote app\nspool remove <name> # remove an app and unwire it\nspool ci            # generate per-app deploy workflows\nspool upgrade       # sync generated files to the installed spool\nspool doctor        # check ports, wiring and shared deps\n\`\`\`\n\n## Deploying remotes\n\nA host resolves each remote in this order:\n\n1. \`SPOOL_REMOTE_<NAME>\` env var (ad-hoc override, e.g. point one remote at staging)\n2. the remote's \`urls\` entry for \`SPOOL_ENV\` / \`--env\` (production builds only)\n3. the remote's \`url\` in \`spool.json\` (its deployed \`mf-manifest.json\`, used in production builds)\n4. \`http://localhost:<port>/mf-manifest.json\` (local dev)\n`
+	return `# ${m.name}\n\nMicro-frontend workspace scaffolded with [spool](https://github.com/zerosumstudio/spool).\n\nAll federation wiring lives in \`spool.json\`; each app's \`vite.config.ts\` reads it\nthrough \`spool.vite.ts\` at startup, so editing the manifest is all you ever do.\n\n## Commands\n\n\`\`\`bash\n${m.packageManager} install    # install all apps\nspool dev           # run host + remotes together\nspool build         # coordinated production build\nspool preview       # serve the built apps locally\nspool deploy        # run each app's deploy command\nspool add <name>    # add a host or remote app\nspool remove <name> # remove an app and unwire it\nspool ci            # generate per-app deploy workflows\nspool upgrade       # sync generated files to the installed spool\nspool doctor        # check ports, wiring and shared deps\n\`\`\`\n\n## Deploying remotes\n\nA host resolves each remote in this order:\n\n1. \`SPOOL_REMOTE_<NAME>\` env var (ad-hoc override, e.g. point one remote at staging)\n2. the remote's \`urls\` entry for \`SPOOL_ENV\` / \`--env\` (production builds only)\n3. the remote's \`url\` in \`spool.json\` (its deployed \`mf-manifest.json\`, used in production builds)\n4. \`http://localhost:<port>/mf-manifest.json\` (local dev)\n`
 }
 
 /*
@@ -194,7 +194,7 @@ export function appFiles(
 	appName: string,
 	app: AppConfig,
 	extras: TemplateExtras = NO_EXTRAS,
-	root: string = process.cwd()
+	root: string = process.cwd(),
 ): FileMap {
 	const isHost = app.type === 'host'
 	const refs = app.remotes.length ? remoteRefs(m, app) : []
@@ -236,7 +236,7 @@ export function appConfigFiles(appName: string, app: AppConfig, sentry = false):
 export function hostWiringFiles(
 	m: Manifest,
 	host: AppConfig,
-	root: string = process.cwd()
+	root: string = process.cwd(),
 ): FileMap {
 	const files: FileMap = {}
 	if (host.type !== 'host' && !host.remotes.length) return files
@@ -267,7 +267,7 @@ function appPackageJson(
 	m: Manifest,
 	appName: string,
 	app: AppConfig,
-	extras: TemplateExtras
+	extras: TemplateExtras,
 ): string {
 	const { dependencies, devDependencies } = appDependencies(m, app)
 

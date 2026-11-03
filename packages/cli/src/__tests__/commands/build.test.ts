@@ -36,7 +36,7 @@ describe('build', () => {
 		await build({ json: true })
 
 		expect(write).toHaveBeenCalledWith(
-			`${JSON.stringify({ name: 'dashboard', ok: true, duration: 42 })}\n`
+			`${JSON.stringify({ name: 'dashboard', ok: true, duration: 42 })}\n`,
 		)
 	})
 

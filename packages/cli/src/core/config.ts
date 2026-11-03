@@ -323,7 +323,7 @@ function normaliseShellAddon(raw: unknown): void {
 	;(raw as { addons: unknown }).addons = kept
 
 	log.warn(
-		`${MANIFEST_FILE} lists the addon "shell", which is now split into "navigation" and "federation". Run \`spool upgrade\` to update ${MANIFEST_FILE} on disk.`
+		`${MANIFEST_FILE} lists the addon "shell", which is now split into "navigation" and "federation". Run \`spool upgrade\` to update ${MANIFEST_FILE} on disk.`,
 	)
 }
 
@@ -336,7 +336,7 @@ export function parseManifest(raw: unknown): Manifest {
 		const v = (raw as { version: unknown }).version
 		if (v !== undefined && v !== MANIFEST_VERSION) {
 			throw new CliError(
-				`This workspace uses spool.json version ${String(v)}, but this CLI only understands version ${MANIFEST_VERSION}. Upgrade spool and try again.`
+				`This workspace uses spool.json version ${String(v)}, but this CLI only understands version ${MANIFEST_VERSION}. Upgrade spool and try again.`,
 			)
 		}
 	}
@@ -347,7 +347,7 @@ export function parseManifest(raw: unknown): Manifest {
 		(raw as { bundler: unknown }).bundler === 'rspack'
 	) {
 		throw new CliError(
-			'spool.json sets bundler "rspack", which is not supported yet. Run `spool upgrade` to remove the field, or set it to "vite".'
+			'spool.json sets bundler "rspack", which is not supported yet. Run `spool upgrade` to remove the field, or set it to "vite".',
 		)
 	}
 
@@ -371,7 +371,7 @@ export function appPort(m: Manifest, name: string): number {
 	const app = m.apps[name]
 	if (!app) {
 		throw new CliError(
-			`No app named "${name}" in this workspace. Check the names in spool.json.`
+			`No app named "${name}" in this workspace. Check the names in spool.json.`,
 		)
 	}
 	return app.port

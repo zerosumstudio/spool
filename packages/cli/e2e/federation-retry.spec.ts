@@ -26,7 +26,7 @@ async function outage(page: Page, app: FixtureApp, only?: RegExp): Promise<Outag
 			if (down && (!only || only.test(url))) return route.abort('connectionrefused')
 			if (!down) fetched.push(new URL(url).pathname)
 			return route.continue()
-		}
+		},
 	)
 	return {
 		end() {
@@ -143,7 +143,7 @@ test.describe('preloadRemote', () => {
 		await expect(newAssessment(page)).toBeVisible()
 		await expect(page.getByRole('alert')).toHaveCount(0)
 		expect(remote.fetched).toEqual(
-			expect.arrayContaining(['/mf-manifest.json', '/remoteEntry.js'])
+			expect.arrayContaining(['/mf-manifest.json', '/remoteEntry.js']),
 		)
 	})
 })
@@ -187,7 +187,7 @@ test.describe('several hosts and loads of one remote', () => {
 				requested.push(route.request().url())
 				await released
 				return route.continue()
-			}
+			},
 		)
 		await page.goto(`${appOrigin('shell')}/pair`)
 		const first = page.getByTestId('slot:assessments')
@@ -224,7 +224,7 @@ test.describe('several hosts and loads of one remote', () => {
 					).flatMap(instance =>
 						[...(instance.moduleCache?.entries() ?? [])]
 							.filter(([name]) => name.endsWith('assessments'))
-							.map(([, module]) => module)
+							.map(([, module]) => module),
 					),
 			})
 		})

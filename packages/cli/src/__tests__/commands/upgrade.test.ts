@@ -116,7 +116,7 @@ describe('upgrade', () => {
 		expect(pkg.devDependencies['@types/node']).toBeDefined()
 
 		// Older workspaces did not carry the cli; upgrade adds it back.
-		expect(pkg.devDependencies['@bkincz/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
+		expect(pkg.devDependencies['@zerosumstudio/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
 	})
 
 	it('leaves a customized vite config alone and says so', async () => {
@@ -260,7 +260,7 @@ describe('upgrade', () => {
 		await upgrade({})
 
 		expect(step).toHaveBeenCalledWith(
-			expect.stringContaining('left 1 dependency range(s) alone')
+			expect.stringContaining('left 1 dependency range(s) alone'),
 		)
 	})
 
@@ -284,7 +284,7 @@ describe('upgrade', () => {
 		await upgrade({ pin: true })
 
 		expect(readJson('apps/dashboard/package.json').dependencies.react).toBe(
-			'link:../../vendor/react'
+			'link:../../vendor/react',
 		)
 	})
 
@@ -333,7 +333,7 @@ describe('upgrade', () => {
 
 		expect(record.files['spool.vite.ts']).toBe(hashContent(read('spool.vite.ts')))
 		expect(record.files['apps/shell/vite.config.ts']).toBe(
-			hashContent(read('apps/shell/vite.config.ts'))
+			hashContent(read('apps/shell/vite.config.ts')),
 		)
 	})
 

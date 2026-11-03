@@ -140,7 +140,7 @@ function svelteHostApp(appName: string, refs: RemoteRef[], extras: TemplateExtra
 			r => `  <section>
     <h2>${r.name}</h2>
     <div bind:this={${camelCase(r.name)}El}></div>
-  </section>`
+  </section>`,
 		)
 		.join('\n')
 

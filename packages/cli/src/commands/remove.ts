@@ -59,7 +59,7 @@ export async function remove(name: string, opts: RemoveOptions): Promise<void> {
 	log.success(`removed ${app.type} ${name}`)
 	if (consumers.length) {
 		log.step(
-			`If a consumer's own components still import or mount "${name}/App", remove that code.`
+			`If a consumer's own components still import or mount "${name}/App", remove that code.`,
 		)
 	}
 }
@@ -103,7 +103,7 @@ function unwireConsumers(ws: Workspace, remote: string): ConsumerRef[] {
 async function refreshConsumerTypings(
 	ws: Workspace,
 	consumer: ConsumerRef,
-	provenance: Provenance
+	provenance: Provenance,
 ): Promise<void> {
 	const app = ws.manifest.apps[consumer.name]!
 	const dir = join(ws.root, consumer.path)

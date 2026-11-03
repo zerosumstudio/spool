@@ -71,7 +71,7 @@ function renderTree(data: GraphData): string {
 		const last = index === data.apps.length - 1
 		const pipe = last ? '  ' : '│ '
 		lines.push(
-			`${last ? '└─' : '├─'} ${app.name} (${app.type}, ${app.framework}, port ${app.port})`
+			`${last ? '└─' : '├─'} ${app.name} (${app.type}, ${app.framework}, port ${app.port})`,
 		)
 
 		const details: string[] = []

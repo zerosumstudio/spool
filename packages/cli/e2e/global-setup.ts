@@ -171,7 +171,7 @@ async function scaffold(root: string): Promise<string> {
 			'federation,navigation',
 			'--no-install',
 		],
-		root
+		root,
 	)
 	const dir = join(root, 'fx')
 
@@ -185,7 +185,7 @@ async function scaffold(root: string): Promise<string> {
 	})
 	// This checkout's CLI, not whatever version is on the registry.
 	editJson<FixturePackage>(join(dir, 'package.json'), pkg => {
-		pkg.devDependencies['@bkincz/spool'] = `link:${CLI_PACKAGE.replaceAll('\\', '/')}`
+		pkg.devDependencies['@zerosumstudio/spool'] = `link:${CLI_PACKAGE.replaceAll('\\', '/')}`
 	})
 	// The generated range takes the newest plugin, whose runtime is not the one
 	// spool pins. 1.17.1 is the release built on that runtime.
@@ -193,7 +193,7 @@ async function scaffold(root: string): Promise<string> {
 	if (plugin) {
 		appendFileSync(
 			join(dir, 'pnpm-workspace.yaml'),
-			`overrides:\n    '@module-federation/vite': ${plugin}\n`
+			`overrides:\n    '@module-federation/vite': ${plugin}\n`,
 		)
 	}
 	writeFileSync(join(dir, 'apps/assessments/src/new-assessment.tsx'), NEW_ASSESSMENT)
@@ -211,8 +211,8 @@ async function scaffold(root: string): Promise<string> {
 	const installed = JSON.parse(
 		readFileSync(
 			join(dir, 'apps/shell/node_modules/@module-federation/vite/package.json'),
-			'utf8'
-		)
+			'utf8',
+		),
 	) as { version: string }
 	console.log(`fixture: @module-federation/vite ${installed.version}`)
 	return dir
@@ -258,8 +258,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 	try {
 		await Promise.all(
 			(['staff', 'assessments'] as const).map(app =>
-				waitForManifest(`${appOrigin(app)}/mf-manifest.json`, { timeoutMs: 60_000 })
-			)
+				waitForManifest(`${appOrigin(app)}/mf-manifest.json`, { timeoutMs: 60_000 }),
+			),
 		)
 		await waitForManifest(appOrigin('shell'), { timeoutMs: 60_000 })
 		await warmUp()

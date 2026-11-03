@@ -47,7 +47,7 @@ function spawnCli(args: string[], cwd: string): Session {
 		child.onExit(e => {
 			code = e.exitCode
 			resolve(e.exitCode)
-		})
+		}),
 	)
 	const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -106,7 +106,7 @@ describe.skipIf(!runnable)('create (real pty)', () => {
 				'pnpm',
 				'--no-install',
 			],
-			dir
+			dir,
 		)
 		await s.waitFor(/Remote app names/)
 		await s.send([...Array(12).fill(BACKSPACE), ENTER])
@@ -136,7 +136,7 @@ describe.skipIf(!runnable)('create (real pty)', () => {
 				'pnpm',
 				'--no-install',
 			],
-			dir
+			dir,
 		)
 		await s.waitFor(/Extras to include/)
 		await s.send([...Array(SENTRY_INDEX).fill(DOWN), SPACE, ENTER])

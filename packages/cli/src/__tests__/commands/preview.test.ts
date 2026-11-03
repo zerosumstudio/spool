@@ -27,7 +27,7 @@ describe('preview', () => {
 		await preview({ kill: true })
 		expect(killRunning).toHaveBeenCalledWith(
 			expect.objectContaining({ root: '/ws' }),
-			'preview'
+			'preview',
 		)
 		expect(previewAll).not.toHaveBeenCalled()
 	})
@@ -36,7 +36,7 @@ describe('preview', () => {
 		await preview({ only: 'dashboard,shell' })
 		expect(previewAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ only: ['dashboard', 'shell'] })
+			expect.objectContaining({ only: ['dashboard', 'shell'] }),
 		)
 	})
 })

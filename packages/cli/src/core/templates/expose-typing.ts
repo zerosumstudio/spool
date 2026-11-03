@@ -12,7 +12,7 @@ import type { RemoteRef, RemoteTypingContext } from './types.js'
 export function typedExposeDeclaration(
 	ref: RemoteRef,
 	expose: string,
-	ctx: RemoteTypingContext
+	ctx: RemoteTypingContext,
 ): string | undefined {
 	const source = ref.exposeSources[expose]
 	if (!source) return undefined

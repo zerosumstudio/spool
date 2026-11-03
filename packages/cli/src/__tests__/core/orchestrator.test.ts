@@ -200,7 +200,7 @@ describe('devAll', () => {
 		})
 		void devAll(ws, { only: ['shell'] })
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('dashboard'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('dashboard')),
 		)
 		expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('not selected'))
 	})
@@ -213,7 +213,7 @@ describe('devAll', () => {
 
 		void devAll(ws)
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('server.fs.allow'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('server.fs.allow')),
 		)
 		expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('spool upgrade'))
 		removeDir(root)
@@ -226,7 +226,7 @@ describe('devAll', () => {
 		})
 		void devAll(ws, { only: ['dashboard'] })
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('widget'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('widget')),
 		)
 	})
 
@@ -247,7 +247,7 @@ describe('devAll', () => {
 			mkdirSync(join(root, path, 'dist'), { recursive: true })
 			writeFileSync(
 				join(root, path, 'dist/mf-manifest.json'),
-				JSON.stringify({ shared: [{ name: 'react', version, requiredVersion }] })
+				JSON.stringify({ shared: [{ name: 'react', version, requiredVersion }] }),
 			)
 		}
 		write('apps/shell', '20.0.0', '^20.0.0')
@@ -265,7 +265,7 @@ describe('devAll', () => {
 	it('rejects an unknown app name in the only filter', async () => {
 		const ws = makeWorkspace('/ws', { dashboard: remote() })
 		await expect(devAll(ws, { only: ['ghost'] })).rejects.toThrow(
-			'Unknown app(s) in --only: ghost'
+			'Unknown app(s) in --only: ghost',
 		)
 		expect(spawnProcess).not.toHaveBeenCalled()
 	})
@@ -278,7 +278,7 @@ describe('devAll', () => {
 
 		emitReady(children[0]!, 5174)
 		await vi.waitFor(() =>
-			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready'))
+			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready')),
 		)
 		children[0]!.stdout.emit('data', Buffer.from('hello\n'))
 		expect(write).toHaveBeenCalledWith(expect.stringContaining('hello'))
@@ -320,7 +320,7 @@ describe('devAll', () => {
 		children[1]!.stdout.emit('data', Buffer.from('  ➤  Network: use --host to expose\n'))
 
 		await vi.waitFor(() =>
-			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready'))
+			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready')),
 		)
 		const rows = vi.mocked(log.plain).mock.calls.map(call => String(call[0]))
 		const shellRow = rows.find(row => row.includes('shell'))!
@@ -329,7 +329,7 @@ describe('devAll', () => {
 		// The host row comes before the remote's, and the shared vite version
 		// moves to the footer.
 		expect(rows.indexOf(shellRow)).toBeLessThan(
-			rows.findIndex(row => row.includes('dashboard'))
+			rows.findIndex(row => row.includes('dashboard')),
 		)
 		expect(rows.some(row => row.includes('vite 8.1.3'))).toBe(true)
 		// The buffered noise never reaches the terminal.
@@ -369,7 +369,7 @@ describe('devAll', () => {
 		children[1]!.stdout.emit('data', Buffer.from('  ➤  Local:   http://localhost:5175/\n'))
 
 		await vi.waitFor(() =>
-			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('vite 8.1.3'))
+			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('vite 8.1.3')),
 		)
 		const rows = vi.mocked(log.plain).mock.calls.map(call => String(call[0]))
 		expect(rows.some(row => row.includes('vite 8.2.0'))).toBe(true)
@@ -393,7 +393,7 @@ describe('devAll', () => {
 			emitReady(children[0]!, 5174)
 			// The panel paints at the top and confines scrolling below itself.
 			await vi.waitFor(() =>
-				expect(write).toHaveBeenCalledWith(expect.stringContaining('\x1b[H'))
+				expect(write).toHaveBeenCalledWith(expect.stringContaining('\x1b[H')),
 			)
 			const painted = write.mock.calls.map(call => String(call[0])).join('')
 			expect(painted).toContain('dev servers ready')
@@ -453,7 +453,7 @@ describe('devAll', () => {
 		const out = write.mock.calls.map(call => String(call[0])).join('')
 		expect(out).toContain('dashboard bound port 5174')
 		expect(out.indexOf('dashboard bound port 5174')).toBeLessThan(
-			out.indexOf('shell exploding')
+			out.indexOf('shell exploding'),
 		)
 	})
 
@@ -466,11 +466,11 @@ describe('devAll', () => {
 		children[0]!.stdout.emit('data', Buffer.from('  VITE v8.1.3  re'))
 		children[0]!.stdout.emit(
 			'data',
-			Buffer.from('ady in 500 ms\n  ➤  Local:   http://localhost:5174/\n')
+			Buffer.from('ady in 500 ms\n  ➤  Local:   http://localhost:5174/\n'),
 		)
 
 		await vi.waitFor(() =>
-			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready'))
+			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready')),
 		)
 	})
 
@@ -499,7 +499,7 @@ describe('devAll', () => {
 		})
 		void devAll(ws)
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('not serving'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('not serving')),
 		)
 	})
 
@@ -598,7 +598,7 @@ describe('devAll', () => {
 
 			const calls = vi.mocked(spawnProcess).mock.calls
 			const builtCall = calls.find(call =>
-				(call[2] as { cwd: string }).cwd.includes('dashboard')
+				(call[2] as { cwd: string }).cwd.includes('dashboard'),
 			)!
 			expect(builtCall[1]).toEqual(['run', 'preview'])
 			expect(log.warn).not.toHaveBeenCalledWith(expect.stringContaining('not selected'))
@@ -613,7 +613,7 @@ describe('devAll', () => {
 			})
 
 			await expect(devAll(ws, { only: ['shell'], rest: { kind: 'built' } })).rejects.toThrow(
-				'dist folder'
+				'dist folder',
 			)
 			removeDir(root)
 		})
@@ -635,7 +635,7 @@ describe('devAll', () => {
 				env?: Record<string, string>
 			}
 			expect(opts.env?.SPOOL_REMOTE_DASHBOARD).toBe(
-				'https://staging.example.com/mf-manifest.json'
+				'https://staging.example.com/mf-manifest.json',
 			)
 		})
 
@@ -646,7 +646,7 @@ describe('devAll', () => {
 			})
 
 			await expect(
-				devAll(ws, { only: ['shell'], rest: { kind: 'env', env: 'staging' } })
+				devAll(ws, { only: ['shell'], rest: { kind: 'env', env: 'staging' } }),
 			).rejects.toThrow('urls.staging')
 		})
 	})
@@ -695,7 +695,7 @@ describe('devAll', () => {
 		mkdirSync(join(root, 'packages/ui'), { recursive: true })
 		writeFileSync(
 			join(root, 'packages/ui/package.json'),
-			JSON.stringify({ name: 'ui', scripts: { ladle: 'ladle serve' } })
+			JSON.stringify({ name: 'ui', scripts: { ladle: 'ladle serve' } }),
 		)
 	}
 
@@ -730,11 +730,11 @@ describe('devAll', () => {
 		// Ladle prints no VITE banner, only its own url line.
 		children[1]!.stdout.emit(
 			'data',
-			Buffer.from('🥄 Ladle running at http://localhost:61000/\n')
+			Buffer.from('🥄 Ladle running at http://localhost:61000/\n'),
 		)
 
 		await vi.waitFor(() =>
-			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready'))
+			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('dev servers ready')),
 		)
 		const rows = vi.mocked(log.plain).mock.calls.map(call => String(call[0]))
 		const ladleRow = rows.find(row => row.includes('ladle'))!
@@ -754,7 +754,7 @@ describe('devAll', () => {
 		// children[1] is the ladle process (spawned right after the sole remote).
 		children[1]!.emit('exit', 1)
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('ladle stopped'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('ladle stopped')),
 		)
 		expect(killTree).not.toHaveBeenCalled()
 		removeDir(root)
@@ -822,7 +822,9 @@ describe('previewAll', () => {
 		// vite preview prints no version banner, only the Local line.
 		children[0]!.stdout.emit('data', Buffer.from('  ➤  Local:   http://localhost:5174/\n'))
 		await vi.waitFor(() =>
-			expect(log.plain).toHaveBeenCalledWith(expect.stringContaining('preview servers ready'))
+			expect(log.plain).toHaveBeenCalledWith(
+				expect.stringContaining('preview servers ready'),
+			),
 		)
 		const rows = vi.mocked(log.plain).mock.calls.map(call => String(call[0]))
 		expect(rows.some(row => row.includes('serving production builds'))).toBe(true)
@@ -838,7 +840,7 @@ describe('previewAll', () => {
 
 		void previewAll(ws)
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('spool upgrade'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('spool upgrade')),
 		)
 		removeDir(root)
 	})
@@ -855,7 +857,7 @@ describe('previewAll', () => {
 
 		void previewAll(ws)
 		await vi.waitFor(() =>
-			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('SPOOL_REMOTE_'))
+			expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('SPOOL_REMOTE_')),
 		)
 		removeDir(root)
 	})
@@ -891,8 +893,8 @@ describe('buildAll', () => {
 			Promise.resolve(
 				(opts as { cwd: string }).cwd.includes('reports')
 					? { code: 0, output: '' }
-					: { code: 1, output: 'it broke' }
-			)
+					: { code: 1, output: 'it broke' },
+			),
 		)
 		const ws = makeWorkspace('/ws', {
 			dashboard: remote(),
@@ -961,10 +963,10 @@ describe('buildAll', () => {
 		await buildAll(ws)
 
 		const shellStart = order.findIndex(
-			entry => entry.startsWith('start:') && entry.includes('shell')
+			entry => entry.startsWith('start:') && entry.includes('shell'),
 		)
 		const remoteEnd = order.findIndex(
-			entry => entry.startsWith('end:') && entry.includes('dashboard')
+			entry => entry.startsWith('end:') && entry.includes('dashboard'),
 		)
 		expect(remoteEnd).toBeLessThan(shellStart)
 	})
@@ -1018,8 +1020,8 @@ describe('buildAll', () => {
 			Promise.resolve(
 				(opts as { cwd: string }).cwd.includes('profile')
 					? { code: 1, output: 'nope' }
-					: { code: 0, output: '' }
-			)
+					: { code: 0, output: '' },
+			),
 		)
 		const ws = makeWorkspace('/ws', {
 			dashboard: remote(),
@@ -1028,7 +1030,7 @@ describe('buildAll', () => {
 		const results: { name: string; ok: boolean }[] = []
 
 		await expect(
-			buildAll(ws, undefined, undefined, undefined, r => results.push(r))
+			buildAll(ws, undefined, undefined, undefined, r => results.push(r)),
 		).rejects.toThrow()
 
 		expect(results).toContainEqual(expect.objectContaining({ name: 'dashboard', ok: true }))
@@ -1163,7 +1165,7 @@ describe('deployAll', () => {
 					sha: 'deadbeef',
 					url: 'https://d.example.com/mf.json',
 					shared: { react: '18.2.0' },
-				})
+				}),
 			)
 		})
 
@@ -1188,7 +1190,7 @@ describe('promoteApp', () => {
 		const ws = makeWorkspace('/ws', { dashboard: remote({ deploy: 'x' }) })
 
 		await expect(promoteApp(ws, 'production', 'dashboard', 'abc1234')).rejects.toThrow(
-			'working tree'
+			'working tree',
 		)
 		expect(runShell).not.toHaveBeenCalled()
 	})
@@ -1205,14 +1207,14 @@ describe('promoteApp', () => {
 			ws,
 			'production',
 			'dashboard',
-			expect.objectContaining({ sha: 'abc1234full' })
+			expect.objectContaining({ sha: 'abc1234full' }),
 		)
 	})
 
 	it('rejects an app with no deploy command', async () => {
 		const ws = makeWorkspace('/ws', { dashboard: remote() })
 		await expect(promoteApp(ws, 'production', 'dashboard', 'abc1234')).rejects.toThrow(
-			'no "deploy" command'
+			'no "deploy" command',
 		)
 	})
 })
@@ -1221,7 +1223,7 @@ describe('rollbackApp', () => {
 	it('fails clearly when there is nothing earlier to roll back to', async () => {
 		const ws = makeWorkspace('/ws', { dashboard: remote({ deploy: 'x' }) })
 		await expect(rollbackApp(ws, 'production', 'dashboard')).rejects.toThrow(
-			'No earlier deploy'
+			'No earlier deploy',
 		)
 	})
 
@@ -1242,7 +1244,7 @@ describe('rollbackApp', () => {
 			ws,
 			'production',
 			'dashboard',
-			expect.objectContaining({ sha: 'previous456' })
+			expect.objectContaining({ sha: 'previous456' }),
 		)
 	})
 })

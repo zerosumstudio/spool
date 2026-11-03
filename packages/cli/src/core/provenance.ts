@@ -52,7 +52,7 @@ export class Provenance {
 	private constructor(
 		private readonly root: string,
 		private readonly files: Record<string, string>,
-		private readonly owned: Set<string>
+		private readonly owned: Set<string>,
 	) {}
 
 	/** A record spool cannot read is treated as absent, never as a conflict. */
@@ -181,7 +181,7 @@ export class Provenance {
 			writtenBy: CLI_VERSION,
 			// Sorted so committing this file produces a readable diff.
 			files: Object.fromEntries(
-				Object.entries(this.files).sort(([a], [b]) => a.localeCompare(b))
+				Object.entries(this.files).sort(([a], [b]) => a.localeCompare(b)),
 			),
 			...(this.owned.size ? { owned: [...this.owned].sort() } : {}),
 		}

@@ -164,10 +164,10 @@ describe('src/federation/overrides.ts', () => {
 		manifest.addons = ['federation']
 		const barrel = federationFiles(manifest, manifest.apps.shell!)['src/federation/index.ts']!
 		expect(barrel).toContain(
-			'export { setRemoteOverride, listRemoteOverrides } from "./overrides"'
+			'export { setRemoteOverride, listRemoteOverrides } from "./overrides"',
 		)
 		expect(barrel).toContain(
-			'export { remotes, type RemoteEntry, type RemoteName, isRemoteName, preloadRemote } from "./remotes"'
+			'export { remotes, type RemoteEntry, type RemoteName, isRemoteName, preloadRemote } from "./remotes"',
 		)
 	})
 })

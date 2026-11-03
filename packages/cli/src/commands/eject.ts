@@ -17,7 +17,7 @@ export interface EjectOptions {
 	yes?: boolean
 }
 
-const SPOOL_DEP = '@bkincz/spool'
+const SPOOL_DEP = '@zerosumstudio/spool'
 /** Scripts spool.json's own scaffold writes; only these get touched. */
 const REPLACED_SCRIPTS = ['dev', 'build'] as const
 const REMOVED_SCRIPTS = ['preview', 'doctor'] as const
@@ -58,7 +58,7 @@ export async function eject(opts: EjectOptions): Promise<void> {
 
 			return done
 		},
-		{ root: ws.root }
+		{ root: ws.root },
 	)
 
 	await rm(join(ws.root, '.spool'), { recursive: true, force: true })
@@ -68,10 +68,10 @@ export async function eject(opts: EjectOptions): Promise<void> {
 	for (const change of changes) log.step(change)
 
 	log.step(
-		'`spool dev`/`spool build` ran remotes before hosts; the native scripts run every app in whatever order the package manager picks, so wire that ordering yourself (a filtered run per role, or a task runner like turbo/nx) if it matters to your build.'
+		'`spool dev`/`spool build` ran remotes before hosts; the native scripts run every app in whatever order the package manager picks, so wire that ordering yourself (a filtered run per role, or a task runner like turbo/nx) if it matters to your build.',
 	)
 	log.step(
-		`kept, and still yours to use: ${MANIFEST_FILE} (the wiring you are migrating off of), ${HELPER_FILE} and ${WORKSPACE_FILE} (imported by every app's vite config), and every generated file (vite.config.ts, package.json, ...) — eject only removes spool's own dependency, scripts and bookkeeping.`
+		`kept, and still yours to use: ${MANIFEST_FILE} (the wiring you are migrating off of), ${HELPER_FILE} and ${WORKSPACE_FILE} (imported by every app's vite config), and every generated file (vite.config.ts, package.json, ...) — eject only removes spool's own dependency, scripts and bookkeeping.`,
 	)
 }
 

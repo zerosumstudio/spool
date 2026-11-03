@@ -41,7 +41,7 @@ export function readPackageJson(path: string): PackageJsonShape | 'missing' | 'i
 export function dependencyHome(
 	pkg: PackageJsonShape,
 	dep: string,
-	section: DependencySection
+	section: DependencySection,
 ): Record<string, string> {
 	if (pkg.dependencies?.[dep] !== undefined) return pkg.dependencies
 	if (pkg.devDependencies?.[dep] !== undefined) return pkg.devDependencies
@@ -56,7 +56,7 @@ export async function editJsonFile(
 	/** Workspace root, so the edit lands in the workspace style. */
 	target: string,
 	edit: (json: PackageJsonShape) => string[],
-	opts: { write?: boolean; root?: string } = {}
+	opts: { write?: boolean; root?: string } = {},
 ): Promise<string[]> {
 	if (!existsSync(target)) return []
 

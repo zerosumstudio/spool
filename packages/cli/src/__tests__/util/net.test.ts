@@ -46,7 +46,7 @@ describe('waitForManifest', () => {
 	it('keeps waiting then times out while the server only returns errors', async () => {
 		const { url, close } = await httpServe(503)
 		await expect(waitForManifest(url, { timeoutMs: 300, intervalMs: 50 })).rejects.toThrow(
-			'Timed out waiting for'
+			'Timed out waiting for',
 		)
 		close()
 	})
@@ -57,7 +57,7 @@ describe('waitForManifest', () => {
 			waitForManifest(`http://127.0.0.1:${port}/mf-manifest.json`, {
 				timeoutMs: 300,
 				intervalMs: 50,
-			})
+			}),
 		).rejects.toThrow('Timed out waiting for')
 	})
 
@@ -73,7 +73,7 @@ describe('waitForManifest', () => {
 				timeoutMs: 5_000,
 				intervalMs: 50,
 				signal: controller.signal,
-			})
+			}),
 		).rejects.toThrow()
 		expect(Date.now() - started).toBeLessThan(1_000)
 	})
@@ -119,7 +119,7 @@ describe('parseLsofOwner', () => {
 
 	it('returns undefined for header-only output', () => {
 		expect(
-			parseLsofOwner('COMMAND   PID  USER   FD   TYPE DEVICE SIZE/OFF NODE NAME')
+			parseLsofOwner('COMMAND   PID  USER   FD   TYPE DEVICE SIZE/OFF NODE NAME'),
 		).toBeUndefined()
 	})
 

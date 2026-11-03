@@ -31,7 +31,7 @@ describe('deploy', () => {
 		await deploy({ json: true })
 
 		expect(write).toHaveBeenCalledWith(
-			`${JSON.stringify({ name: 'dashboard', ok: true, duration: 10 })}\n`
+			`${JSON.stringify({ name: 'dashboard', ok: true, duration: 10 })}\n`,
 		)
 	})
 

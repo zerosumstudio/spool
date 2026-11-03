@@ -20,7 +20,7 @@ import type { AddonName, Manifest } from '../../core/config.js'
  ***************************************************************************************************/
 function workspace(
 	addons: AddonName[],
-	overrides: Parameters<typeof makeManifest>[0] = {}
+	overrides: Parameters<typeof makeManifest>[0] = {},
 ): Manifest {
 	const manifest = makeManifest({
 		shell: host({ remotes: ['browse'] }),
@@ -74,7 +74,7 @@ describe('lint addon', () => {
 	it('pulls in a plugin only for the frameworks in use', () => {
 		const react = ADDONS.lint.files(workspace(['lint']))['eslint.config.js']!
 		const mixed = ADDONS.lint.files(
-			workspace(['lint'], { widget: remote({ framework: 'svelte', path: 'apps/widget' }) })
+			workspace(['lint'], { widget: remote({ framework: 'svelte', path: 'apps/widget' }) }),
 		)['eslint.config.js']!
 
 		expect(react).toContain('eslint-plugin-react-hooks')
@@ -164,7 +164,7 @@ describe('test addon', () => {
 
 		expect(appDependencies(on, on.apps.shell!).devDependencies).toHaveProperty('vitest')
 		expect(appDependencies(on, on.apps.shell!).devDependencies).toHaveProperty(
-			'@testing-library/react'
+			'@testing-library/react',
 		)
 		expect(appDependencies(off, off.apps.shell!).devDependencies).not.toHaveProperty('vitest')
 
@@ -177,10 +177,10 @@ describe('test addon', () => {
 		const off = workspace([])
 
 		expect(
-			JSON.parse(appFiles(on, 'browse', on.apps.browse!)['tsconfig.json']!).include
+			JSON.parse(appFiles(on, 'browse', on.apps.browse!)['tsconfig.json']!).include,
 		).toContain('vitest.config.ts')
 		expect(
-			JSON.parse(appFiles(off, 'browse', off.apps.browse!)['tsconfig.json']!).include
+			JSON.parse(appFiles(off, 'browse', off.apps.browse!)['tsconfig.json']!).include,
 		).not.toContain('vitest.config.ts')
 	})
 

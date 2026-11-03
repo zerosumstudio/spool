@@ -10,7 +10,7 @@ import { STATE_STORE_FILE } from './bridges.js'
  ***************************************************************************************************/
 export function stateFiles(m: Manifest): FileMap {
 	// Every app gets its own copy; sharedMachine resolves all copies to one instance per page.
-	const store = `import { createMachine, sharedMachine, validate } from "@bkincz/clutch";
+	const store = `import { createMachine, sharedMachine, validate } from "@zerosumstudio/clutch";
 
 export interface CounterState {
   count: number;

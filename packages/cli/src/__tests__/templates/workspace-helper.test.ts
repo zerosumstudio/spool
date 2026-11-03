@@ -140,13 +140,13 @@ describe('manifest server config', () => {
 		const { spoolApp } = await load('spool.vite.ts')
 
 		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.proxy['/api'].target).toBe(
-			'http://localhost:3000'
+			'http://localhost:3000',
 		)
 
 		process.env.ACME_BACKEND = 'https://api.example.com'
 		try {
 			expect(
-				spoolApp('dashboard', join(dir, 'apps/dashboard')).server.proxy['/api'].target
+				spoolApp('dashboard', join(dir, 'apps/dashboard')).server.proxy['/api'].target,
 			).toBe('https://api.example.com')
 		} finally {
 			delete process.env.ACME_BACKEND
@@ -216,7 +216,7 @@ describe('server.fs.allow', () => {
 		writeJson('package.json', pkg)
 		// With no workspace marker anywhere vite falls back to the nearest package.json.
 		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs.allow[0]).toBe(
-			join(dir, 'apps/dashboard')
+			join(dir, 'apps/dashboard'),
 		)
 	})
 
@@ -225,7 +225,7 @@ describe('server.fs.allow', () => {
 		const { spoolApp } = await load('spool.vite.ts')
 
 		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs.allow[1]).toBe(
-			resolve(dir, '../contracts')
+			resolve(dir, '../contracts'),
 		)
 	})
 
@@ -234,7 +234,7 @@ describe('server.fs.allow', () => {
 
 		withFsAllow(['${ACME_UNSET_DIR}'])
 		expect(() => spoolApp('dashboard', join(dir, 'apps/dashboard'))).toThrow(
-			/server\.fs\.allow/
+			/server\.fs\.allow/,
 		)
 
 		withFsAllow(['../'.repeat(dir.split(/[\\/]/).length + 2)])
@@ -246,7 +246,7 @@ describe('server.fs.allow', () => {
 		const { spoolApp } = await load('spool.vite.ts')
 
 		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs).not.toHaveProperty(
-			'deny'
+			'deny',
 		)
 	})
 })
