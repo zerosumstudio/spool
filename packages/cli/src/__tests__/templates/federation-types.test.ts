@@ -15,7 +15,7 @@ import { freshDir, host, makeManifest, remote, removeDir } from '../helpers.js'
 // typescript 7 no longer exports its bin, so it is found next to package.json.
 const TSC = join(
 	dirname(createRequire(import.meta.url).resolve('typescript/package.json')),
-	'bin/tsc'
+	'bin/tsc',
 )
 
 // The compiler options a generated workspace's tsconfig.base.json sets.
@@ -70,9 +70,9 @@ async function typeCheck(consumer: string, remotes = ['staff', 'assessments']) {
 		['staff/App', 'assessments/App', 'assessments/NewAssessment']
 			.map(
 				id =>
-					`declare module "${id}" { const Component: unknown; export default Component; }\n`
+					`declare module "${id}" { const Component: unknown; export default Component; }\n`,
 			)
-			.join('')
+			.join(''),
 	)
 	writeFileSync(join(dir, 'consumer.ts'), consumer)
 	return runCaptured(process.execPath, [TSC, '-p', dir], { cwd: dir })
@@ -130,7 +130,7 @@ export function open(fromUrl: string): void {
 	it('compiles for a host with no remotes yet', async () => {
 		const { code, output } = await typeCheck(
 			'import { remotes, type RemoteName } from "./remotes";\nexport const none: RemoteName[] = [];\nvoid remotes;\n',
-			[]
+			[],
 		)
 		expect(output).toBe('')
 		expect(code).toBe(0)

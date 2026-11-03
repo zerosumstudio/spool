@@ -80,7 +80,7 @@ export async function add(name: string, opts: AddOptions): Promise<void> {
 	})
 	if (restored.written.length) {
 		log.warn(
-			`${HELPER_FILE} was missing and has been restored. Apps scaffolded before it existed keep their old baked vite configs; re-create them or port them to the helper.`
+			`${HELPER_FILE} was missing and has been restored. Apps scaffolded before it existed keep their old baked vite configs; re-create them or port them to the helper.`,
 		)
 	}
 
@@ -90,7 +90,7 @@ export async function add(name: string, opts: AddOptions): Promise<void> {
 		await formatFiles(appFiles(manifest, name, app, extras, ws.root), ws.root),
 		{
 			provenance,
-		}
+		},
 	)
 	if (extras.sentry) await wireSentry(ws.root, manifest, name, app, provenance)
 
@@ -156,11 +156,11 @@ async function wireSentry(
 	manifest: Manifest,
 	name: string,
 	app: AppConfig,
-	provenance: Provenance
+	provenance: Provenance,
 ): Promise<void> {
 	const prefix = `${app.path}/`
 	const files = Object.fromEntries(
-		Object.entries(sentryFiles(manifest)).filter(([rel]) => rel.startsWith(prefix))
+		Object.entries(sentryFiles(manifest)).filter(([rel]) => rel.startsWith(prefix)),
 	)
 	if (!Object.keys(files).length) return
 
@@ -218,7 +218,7 @@ function nextFreePort(manifest: Manifest): number {
 /** Federation shares a framework runtime only when it is in `shared`. */
 function shareFrameworkRuntime(manifest: Manifest, framework: Framework): void {
 	const missing = FRAMEWORK_DEPS[framework].dependencies.filter(
-		dep => !manifest.shared.includes(dep)
+		dep => !manifest.shared.includes(dep),
 	)
 	if (!missing.length) return
 	manifest.shared.push(...missing)

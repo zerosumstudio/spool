@@ -109,7 +109,7 @@ describe('addon', () => {
 	it('adds exact allowlist entries even when similar names already exist', async () => {
 		const seeded = read('pnpm-workspace.yaml').replace(
 			/allowBuilds:\r?\n/,
-			"allowBuilds:\n    'msw-storybook-addon': true\n"
+			"allowBuilds:\n    'msw-storybook-addon': true\n",
 		)
 		writeFileSync(join(dir, 'pnpm-workspace.yaml'), seeded)
 

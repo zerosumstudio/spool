@@ -118,7 +118,7 @@ describe('diagnose', () => {
 	const appPackageJson = (path: string, deps: Record<string, string>) => {
 		writeFileSync(
 			join(root, path, 'package.json'),
-			JSON.stringify({ name: 'x', dependencies: deps })
+			JSON.stringify({ name: 'x', dependencies: deps }),
 		)
 	}
 
@@ -149,7 +149,7 @@ describe('diagnose', () => {
 		})
 		appPackageJson('apps/dashboard', { react: '^19.2.0', 'react-dom': '^19.2.0' })
 		const issue = diagnose(ws).find(i =>
-			i.message.includes('"@zerosumstudio/clutch" is not in')
+			i.message.includes('"@zerosumstudio/clutch" is not in'),
 		)
 		expect(issue).toMatchObject({ level: 'warn', app: 'dashboard' })
 	})
@@ -247,7 +247,7 @@ describe('diagnose', () => {
 		const respond = (body: string, init: ResponseInit = {}) =>
 			vi.stubGlobal(
 				'fetch',
-				vi.fn().mockResolvedValue(new Response(body, { status: 200, ...init }))
+				vi.fn().mockResolvedValue(new Response(body, { status: 200, ...init })),
 			)
 
 		const workspace = () =>
@@ -313,7 +313,7 @@ describe('diagnose', () => {
 			await diagnoseRemotes(ws, 'staging')
 			expect(fetch).toHaveBeenCalledWith(
 				'https://staging.example.com/mf-manifest.json',
-				expect.anything()
+				expect.anything(),
 			)
 
 			await diagnoseRemotes(ws, 'production')
@@ -329,7 +329,7 @@ describe('diagnose', () => {
 			await diagnoseRemotes(workspace())
 			expect(fetch).toHaveBeenCalledWith(
 				'https://canary.example.com/mf-manifest.json',
-				expect.anything()
+				expect.anything(),
 			)
 		})
 

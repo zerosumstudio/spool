@@ -83,7 +83,7 @@ export async function upgrade(opts: UpgradeOptions): Promise<void> {
 		root ?? process.cwd(),
 		opts.dryRun ?? false,
 		provenance,
-		opts.force ?? false
+		opts.force ?? false,
 	)
 	const ws = await loadForUpgrade(writer, provenance)
 	const ctx: UpgradeContext = { ws, writer, pin: opts.pin ?? false, ranges: resolveRanges(ws) }
@@ -136,12 +136,12 @@ export async function upgrade(opts: UpgradeOptions): Promise<void> {
 
 async function loadForUpgrade(
 	writer: ChangeWriter,
-	provenance: Provenance | null
+	provenance: Provenance | null,
 ): Promise<Workspace> {
 	const root = findWorkspaceRoot()
 	if (!root) {
 		throw new CliError(
-			`No ${MANIFEST_FILE} found. Run \`spool create\` first, or cd into a spool workspace.`
+			`No ${MANIFEST_FILE} found. Run \`spool create\` first, or cd into a spool workspace.`,
 		)
 	}
 
@@ -198,7 +198,7 @@ async function upgradeRoot(ctx: UpgradeContext): Promise<void> {
 			'.prettierignore': rootFiles['.prettierignore']!,
 			'.gitattributes': rootFiles['.gitattributes']!,
 		},
-		ws.root
+		ws.root,
 	)
 
 	for (const [rel, content] of Object.entries(rootConfigs)) {
@@ -286,7 +286,7 @@ function noteNewCapabilities(writer: ChangeWriter): void {
 	if (!writer.added.has(WORKSPACE_FILE)) return
 
 	log.step(
-		`${WORKSPACE_FILE} is new: import { apps, hosts, remotes, srcDirs } from it for anything that has to cover every app.`
+		`${WORKSPACE_FILE} is new: import { apps, hosts, remotes, srcDirs } from it for anything that has to cover every app.`,
 	)
 }
 
@@ -300,7 +300,7 @@ class ChangeWriter extends OwnedWriter {
 		dir: string,
 		rel: string,
 		label: string,
-		edit: (pkg: PackageJsonShape) => string[]
+		edit: (pkg: PackageJsonShape) => string[],
 	): Promise<void> {
 		const changes = await editJsonFile(join(dir, rel), edit, {
 			write: !this.dryRun,
@@ -319,13 +319,13 @@ class ChangeWriter extends OwnedWriter {
 	summarize(ws: Workspace): void {
 		if (this.skippedCount) {
 			log.step(
-				`left ${this.skippedCount} file(s) alone. Rerun with --force to overwrite them.`
+				`left ${this.skippedCount} file(s) alone. Rerun with --force to overwrite them.`,
 			)
 		}
 
 		if (this.kept) {
 			log.step(
-				`left ${this.kept} dependency range(s) alone; spool cannot compare them to what it would write. Rerun with --pin to overwrite them.`
+				`left ${this.kept} dependency range(s) alone; spool cannot compare them to what it would write. Rerun with --pin to overwrite them.`,
 			)
 		}
 
@@ -341,7 +341,7 @@ class ChangeWriter extends OwnedWriter {
 
 		log.success(`upgraded ${this.changed} file(s)`)
 		log.step(
-			`Review the changes with git, run \`${ws.manifest.packageManager} install\`, then \`spool doctor\`.`
+			`Review the changes with git, run \`${ws.manifest.packageManager} install\`, then \`spool doctor\`.`,
 		)
 	}
 }

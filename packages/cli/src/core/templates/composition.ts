@@ -75,7 +75,7 @@ export function remotesRegistry(refs: RemoteRef[]): string {
 		r.exposes.map(expose => {
 			const id = `${r.name}/${expose}`
 			return `  ${JSON.stringify(exposeKey(r.name, expose))}: { contract: "${r.contract}", load: () => loadRemote("${id}", () => import("${id}")) },`
-		})
+		}),
 	)
 	// A host with no remotes yet has nothing to load.
 	const loadImport = entries.length ? 'import { loadRemote } from "./load";\n\n' : ''
@@ -432,7 +432,7 @@ export function useLocation(): SpoolLocation {
 function remotePrimitive(
 	framework: Framework,
 	refs: RemoteRef[],
-	sentry: boolean
+	sentry: boolean,
 ): [string, string] {
 	const hasComponent = refs.some(r => r.contract === 'component')
 	if (framework === 'svelte') return ['Remote.svelte', svelteRemote(hasComponent, sentry)]
@@ -835,7 +835,7 @@ export function defaultRoutes(names: string[]): Record<string, string> {
 export function compositionHostApp(
 	framework: Framework,
 	appName: string,
-	refs: RemoteRef[]
+	refs: RemoteRef[],
 ): string {
 	const routes = defaultRoutes(refs.map(r => r.name))
 	if (framework === 'svelte') return svelteCompositionHost(appName, routes)

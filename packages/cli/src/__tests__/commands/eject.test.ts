@@ -94,7 +94,7 @@ describe('eject', () => {
 			JSON.stringify({
 				...readJson('package.json'),
 				scripts: { ...readJson('package.json').scripts, dev: 'turbo run dev' },
-			})
+			}),
 		)
 
 		await eject({ yes: true })

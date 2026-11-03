@@ -64,7 +64,7 @@ export interface FrameworkTemplate {
 		appName: string,
 		isHost: boolean,
 		refs: RemoteRef[],
-		extras: TemplateExtras
+		extras: TemplateExtras,
 	): Record<string, string>
 	/** Extra files a host of this framework needs to mount foreign-framework remotes. */
 	bridgeFiles(refs: RemoteRef[]): Record<string, string>

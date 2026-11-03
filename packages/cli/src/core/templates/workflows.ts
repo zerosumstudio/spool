@@ -53,8 +53,8 @@ function unpinnedRef(action: { owner: string; repo: string; tag: string }): stri
 function resolvePins(overrides: Partial<ActionPins> = {}): ActionPins {
 	const defaults = Object.fromEntries(
 		(Object.entries(PINNED_ACTIONS) as [ActionKey, (typeof PINNED_ACTIONS)[ActionKey]][]).map(
-			([key, action]) => [key, unpinnedRef(action)]
-		)
+			([key, action]) => [key, unpinnedRef(action)],
+		),
 	) as ActionPins
 
 	return { ...defaults, ...overrides }
@@ -63,7 +63,7 @@ function resolvePins(overrides: Partial<ActionPins> = {}): ActionPins {
 export function ciWorkflows(
 	m: Manifest,
 	scripts: Record<string, string> = {},
-	ctx: CiContext = {}
+	ctx: CiContext = {},
 ): FileMap {
 	const nodeVersion = ctx.nodeVersion ?? NODE_VERSION_FALLBACK
 	const packageGlobs = ctx.packageGlobs ?? PACKAGE_GLOB_FALLBACK
@@ -83,7 +83,7 @@ export function ciWorkflows(
 			scripts,
 			nodeVersion,
 			packageGlobs,
-			pins
+			pins,
 		)
 	}
 
@@ -117,7 +117,7 @@ function checkSteps(pm: Manifest['packageManager'], scripts: Record<string, stri
 		.map(
 			step => `
             - name: ${step.label}
-              run: ${pm} run ${step.script}`
+              run: ${pm} run ${step.script}`,
 		)
 		.join('\n')
 }
@@ -129,7 +129,7 @@ function checkWorkflow(
 	m: Manifest,
 	scripts: Record<string, string>,
 	nodeVersion: string,
-	pins: ActionPins
+	pins: ActionPins,
 ): string {
 	const pm = m.packageManager
 
@@ -192,7 +192,7 @@ function deployWorkflow(
 	scripts: Record<string, string>,
 	nodeVersion: string,
 	packageGlobs: string[],
-	pins: ActionPins
+	pins: ActionPins,
 ): string {
 	const pm = m.packageManager
 

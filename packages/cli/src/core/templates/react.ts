@@ -122,7 +122,7 @@ function hostApp(appName: string, refs: RemoteRef[], extras: TemplateExtras): st
 				: `        <section>
           <h2>${r.name}</h2>
           <MountRemote load={load${pascalCase(r.name)}} />
-        </section>`
+        </section>`,
 		)
 		.join('\n')
 

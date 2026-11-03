@@ -34,7 +34,7 @@ export function exposeDeclarationPath(
 	root: string,
 	appName: string,
 	appPath: string,
-	exposeSource: string
+	exposeSource: string,
 ): string {
 	const withoutExt = exposeSource.replace(/^\.\//, '').replace(/\.[^./]+$/, '')
 	return join(root, typesOutDir(appName), appPath, `${withoutExt}.d.ts`)
@@ -87,7 +87,7 @@ async function writeProbeConfig(
 	root: string,
 	appDir: string,
 	entries: string[],
-	outDir: string
+	outDir: string,
 ): Promise<string> {
 	const probePath = join(outDir, 'tsconfig.json')
 	await writeFile(
@@ -105,16 +105,16 @@ async function writeProbeConfig(
 				include: [...entries.map(pattern), ...ambientDeclarations(appDir)],
 			},
 			null,
-			2
+			2,
 		),
-		'utf8'
+		'utf8',
 	)
 	return probePath
 }
 
 const declarationsWritten = (root: string, name: string, app: AppConfig): boolean =>
 	Object.values(app.exposes).every(source =>
-		existsSync(exposeDeclarationPath(root, name, app.path, source))
+		existsSync(exposeDeclarationPath(root, name, app.path, source)),
 	)
 
 /**
@@ -126,7 +126,7 @@ const declarationsWritten = (root: string, name: string, app: AppConfig): boolea
 export async function emitRemoteTypes(
 	root: string,
 	m: Manifest,
-	only?: string[]
+	only?: string[],
 ): Promise<TypesResult> {
 	const tsc = resolveTsc(root)
 	if (!tsc) return { built: [], failed: [], skipped: true }
@@ -156,12 +156,12 @@ export async function emitRemoteTypes(
 			if (declarationsWritten(root, name, app)) {
 				built.push(name)
 				log.warn(
-					`spool types: ${name} typed with ${countErrors(output)} type error(s). Run tsc in ${app.path} to see them.`
+					`spool types: ${name} typed with ${countErrors(output)} type error(s). Run tsc in ${app.path} to see them.`,
 				)
 			} else {
 				failed.push(name)
 				log.warn(
-					`spool types: ${name} could not be typed; <Remote> keeps the generic typing.`
+					`spool types: ${name} could not be typed; <Remote> keeps the generic typing.`,
 				)
 				log.warn(output)
 			}

@@ -47,7 +47,7 @@ async function optionsFor(root: string | undefined): Promise<Record<string, unkn
 export async function formatFile(
 	filepath: string,
 	content: string,
-	root?: string
+	root?: string,
 ): Promise<string> {
 	const { format } = await prettier()
 	return format(content, { ...(await optionsFor(root)), filepath })
@@ -65,7 +65,7 @@ export async function formatFiles(files: FileMap, root?: string): Promise<FileMa
 			const { inferredParser } = await getFileInfo(rel)
 			if (!inferredParser) return [rel, content]
 			return [rel, await format(content, { ...options, filepath: rel })]
-		})
+		}),
 	)
 	return Object.fromEntries(entries)
 }

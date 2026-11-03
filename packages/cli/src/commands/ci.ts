@@ -66,7 +66,7 @@ async function resolvePin(action: {
 			`https://github.com/${action.owner}/${action.repo}`,
 			`refs/tags/${action.tag}`,
 		],
-		{ timeout: 5_000 }
+		{ timeout: 5_000 },
 	)
 
 	if (code !== 0) return undefined
@@ -82,12 +82,12 @@ async function resolveActionPins(): Promise<Partial<ActionPins>> {
 				const pin = await resolvePin(action)
 				if (!pin) {
 					log.warn(
-						`Could not resolve ${action.owner}/${action.repo}@${action.tag} to a commit (offline?); leaving it on the tag. Run \`spool ci --pin\` again once you have network access.`
+						`Could not resolve ${action.owner}/${action.repo}@${action.tag} to a commit (offline?); leaving it on the tag. Run \`spool ci --pin\` again once you have network access.`,
 					)
 				}
 				return [key, pin] as const
-			}
-		)
+			},
+		),
 	)
 
 	return Object.fromEntries(entries.filter(([, pin]) => pin !== undefined)) as Partial<ActionPins>
@@ -118,7 +118,7 @@ export async function ci(opts: CiOptions): Promise<void> {
 
 	const files = await formatFiles(
 		ciWorkflows(ws.manifest, scripts, { nodeVersion, packageGlobs, pins }),
-		ws.root
+		ws.root,
 	)
 	const result = await writeFiles(ws.root, files, { force: (opts.force || opts.pin) ?? false })
 

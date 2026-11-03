@@ -76,8 +76,8 @@ export async function diagnosePorts(ws: Workspace): Promise<Diagnostic[]> {
 	const issues: Diagnostic[] = []
 	const owners = await Promise.all(
 		Object.entries(ws.manifest.apps).map(
-			async ([name, app]) => [name, app.port, await portOwner(app.port)] as const
-		)
+			async ([name, app]) => [name, app.port, await portOwner(app.port)] as const,
+		),
 	)
 
 	for (const [name, port, owner] of owners) {
@@ -87,8 +87,8 @@ export async function diagnosePorts(ws: Workspace): Promise<Diagnostic[]> {
 			warn(
 				name,
 				'port-in-use',
-				`Port ${port} is already in use by pid ${owner.pid}${owner.command ? ` (${owner.command})` : ''}. Run \`spool dev --kill\` to free it, or change the port.`
-			)
+				`Port ${port} is already in use by pid ${owner.pid}${owner.command ? ` (${owner.command})` : ''}. Run \`spool dev --kill\` to free it, or change the port.`,
+			),
 		)
 	}
 
@@ -105,7 +105,7 @@ function checkHelper(root: string): Diagnostic[] {
 		error(
 			'',
 			'missing-helper',
-			`${HELPER_FILE} is missing from the workspace root. App vite configs import it; restore it from version control, or run \`spool add\` which recreates it.`
+			`${HELPER_FILE} is missing from the workspace root. App vite configs import it; restore it from version control, or run \`spool add\` which recreates it.`,
 		),
 	]
 }
@@ -124,8 +124,8 @@ function checkFsAllow(ws: Workspace): Diagnostic[] {
 			warn(
 				'',
 				'helper-stale-fs-allow',
-				`This workspace's ${HELPER_FILE} predates server.fs.allow, so the dev server ignores it. Run \`spool upgrade\`.`
-			)
+				`This workspace's ${HELPER_FILE} predates server.fs.allow, so the dev server ignores it. Run \`spool upgrade\`.`,
+			),
 		)
 	}
 
@@ -138,16 +138,16 @@ function checkFsAllow(ws: Workspace): Diagnostic[] {
 				error(
 					'',
 					'fs-allow-root',
-					`server.fs.allow entry "${entry}" resolves to the filesystem root "${dir}", which would let the dev server read any file on disk.`
-				)
+					`server.fs.allow entry "${entry}" resolves to the filesystem root "${dir}", which would let the dev server read any file on disk.`,
+				),
 			)
 		} else if (!existsSync(dir)) {
 			issues.push(
 				warn(
 					'',
 					'fs-allow-missing',
-					`server.fs.allow entry "${entry}" points at "${dir}", which does not exist yet.`
-				)
+					`server.fs.allow entry "${entry}" points at "${dir}", which does not exist yet.`,
+				),
 			)
 		}
 	}
@@ -164,7 +164,7 @@ function checkPorts(apps: Apps): Diagnostic[] {
 
 		if (owner) {
 			issues.push(
-				error(name, 'port-conflict', `Port ${app.port} is already taken by "${owner}".`)
+				error(name, 'port-conflict', `Port ${app.port} is already taken by "${owner}".`),
 			)
 		} else owners.set(app.port, name)
 	}
@@ -189,8 +189,8 @@ function checkRemotes(apps: Apps): Diagnostic[] {
 				error(
 					name,
 					'remote-type-mismatch',
-					`"${remote}" is wired as a remote but it is typed "${target?.type}".`
-				)
+					`"${remote}" is wired as a remote but it is typed "${target?.type}".`,
+				),
 			)
 		}
 	}
@@ -227,8 +227,8 @@ function checkManagedVersions(ws: Workspace, targets: Map<string, RangeInfo>): D
 				'',
 				'version-mismatch',
 				`"${dep}" is on more than one version (${detail.join('; ')}). Spool keeps the deps it writes aligned across the workspace.`,
-				writes.length ? { kind: 'set-deps', writes } : undefined
-			)
+				writes.length ? { kind: 'set-deps', writes } : undefined,
+			),
 		)
 	}
 
@@ -238,7 +238,7 @@ function checkManagedVersions(ws: Workspace, targets: Map<string, RangeInfo>): D
 function alignmentWrites(
 	dep: string,
 	target: string | undefined,
-	current: Iterable<[string, string[]]>
+	current: Iterable<[string, string[]]>,
 ): DepWrite[] {
 	if (target === undefined) return []
 	return [...current]
@@ -252,7 +252,7 @@ type SharedRanges = Map<string, Map<string, string[]>>
 function collectSharedRanges(
 	ws: Workspace,
 	issues: Diagnostic[],
-	targets: Map<string, RangeInfo>
+	targets: Map<string, RangeInfo>,
 ): SharedRanges {
 	const sharedPackages = [...new Set(ws.manifest.shared.map(packageName))]
 	const ranges: SharedRanges = new Map()
@@ -284,7 +284,7 @@ function declaredRanges(
 	ws: Workspace,
 	name: string,
 	path: string,
-	issues: Diagnostic[]
+	issues: Diagnostic[],
 ): Record<string, string> | undefined {
 	const pkg = readPackageJson(join(ws.root, path, 'package.json'))
 
@@ -294,8 +294,8 @@ function declaredRanges(
 			warn(
 				name,
 				'package-json-invalid',
-				'Its package.json could not be parsed; shared deps unchecked.'
-			)
+				'Its package.json could not be parsed; shared deps unchecked.',
+			),
 		)
 		return undefined
 	}
@@ -322,7 +322,7 @@ function missingShared(app: string, dep: string, targets: Map<string, RangeInfo>
 		app,
 		'shared-missing',
 		`Shared dep "${dep}" is not in its package.json dependencies.`,
-		writes.length ? { kind: 'set-deps', writes } : undefined
+		writes.length ? { kind: 'set-deps', writes } : undefined,
 	)
 }
 
@@ -350,8 +350,8 @@ function checkFrameworkShared(ws: Workspace): Diagnostic[] {
 					'',
 					'framework-not-shared',
 					`"${dep}" is not in "shared", so every ${framework} app bundles its own copy. Add it to "shared" in spool.json.`,
-					{ kind: 'share', dep }
-				)
+					{ kind: 'share', dep },
+				),
 			)
 		}
 	}
@@ -372,8 +372,8 @@ function findRangeMismatches(ranges: SharedRanges, targets: Map<string, RangeInf
 				'',
 				'shared-mismatch',
 				`Shared dep "${dep}" has mismatched versions (${detail.join('; ')}). Singletons across the federation boundary should agree.`,
-				writes.length ? { kind: 'set-deps', writes } : undefined
-			)
+				writes.length ? { kind: 'set-deps', writes } : undefined,
+			),
 		)
 	}
 
@@ -399,8 +399,8 @@ export async function diagnoseRemotes(ws: Workspace, env?: string): Promise<Diag
 			warn(
 				'',
 				'remote-no-env-url',
-				`No remote has a "urls.${env}" entry in spool.json; checking each remote's "url" instead.`
-			)
+				`No remote has a "urls.${env}" entry in spool.json; checking each remote's "url" instead.`,
+			),
 		)
 	}
 
@@ -410,7 +410,7 @@ export async function diagnoseRemotes(ws: Workspace, env?: string): Promise<Diag
 				process.env[remoteEnvVar(name)] ||
 				((env === undefined ? undefined : app.urls?.[env]) ?? app.url)
 			return url ? checkDeployedRemote(name, url) : Promise.resolve([noUrl(name, env)])
-		})
+		}),
 	)
 
 	return [...issues, ...results.flat()]
@@ -422,7 +422,7 @@ const noUrl = (name: string, env?: string): Diagnostic =>
 		'remote-no-url',
 		env === undefined
 			? 'It has no "url" in spool.json, so there is no deployed manifest to check.'
-			: `It has no "urls.${env}" or "url" in spool.json, so there is no deployed manifest to check.`
+			: `It has no "urls.${env}" or "url" in spool.json, so there is no deployed manifest to check.`,
 	)
 
 async function checkDeployedRemote(name: string, url: string): Promise<Diagnostic[]> {
@@ -443,7 +443,7 @@ async function checkDeployedRemote(name: string, url: string): Promise<Diagnosti
 			error(
 				name,
 				'remote-bad-status',
-				`${url} responded ${response.status}. Deploy the remote, or fix the url.`
+				`${url} responded ${response.status}. Deploy the remote, or fix the url.`,
 			),
 		]
 	}
@@ -458,7 +458,7 @@ async function checkDeployedRemote(name: string, url: string): Promise<Diagnosti
 			error(
 				name,
 				'remote-unreadable',
-				`Could not read the response from ${url} (${reason}).`
+				`Could not read the response from ${url} (${reason}).`,
 			),
 		]
 	}
@@ -470,8 +470,8 @@ async function checkDeployedRemote(name: string, url: string): Promise<Diagnosti
 			error(
 				name,
 				'remote-not-json',
-				`${url} did not return JSON; this is usually the host's SPA fallback page, meaning mf-manifest.json is not deployed at that path.`
-			)
+				`${url} did not return JSON; this is usually the host's SPA fallback page, meaning mf-manifest.json is not deployed at that path.`,
+			),
 		)
 	}
 
@@ -480,8 +480,8 @@ async function checkDeployedRemote(name: string, url: string): Promise<Diagnosti
 			warn(
 				name,
 				'remote-no-cors',
-				`${url} sends no Access-Control-Allow-Origin header, so browsers will block hosts on other origins. Deploy the remote's public/_headers file, or configure the header on your host.`
-			)
+				`${url} sends no Access-Control-Allow-Origin header, so browsers will block hosts on other origins. Deploy the remote's public/_headers file, or configure the header on your host.`,
+			),
 		)
 	}
 
@@ -501,8 +501,8 @@ function checkExposedFiles(root: string, apps: Apps): Diagnostic[] {
 				error(
 					name,
 					'expose-missing-source',
-					`It exposes "${key}" from "${source}", which is not there. The build cannot emit a remote entry for it.`
-				)
+					`It exposes "${key}" from "${source}", which is not there. The build cannot emit a remote entry for it.`,
+				),
 			)
 		}
 	}
@@ -518,7 +518,7 @@ function checkExposure(apps: Apps): Diagnostic[] {
 
 		if (Object.keys(app.exposes).length === 0) {
 			issues.push(
-				warn(name, 'remote-empty-exposes', 'It exposes nothing, so no host can import it.')
+				warn(name, 'remote-empty-exposes', 'It exposes nothing, so no host can import it.'),
 			)
 		}
 
@@ -564,8 +564,8 @@ function checkProvenanceDrift(ws: Workspace, provenance: Provenance): Diagnostic
 				warn(
 					ownerOf(ws, rel),
 					'file-edited',
-					`${rel} has local changes since spool last generated it. \`spool upgrade\` will ask before overwriting it.`
-				)
+					`${rel} has local changes since spool last generated it. \`spool upgrade\` will ask before overwriting it.`,
+				),
 			)
 		}
 	}
@@ -594,8 +594,8 @@ function checkUntrackedGenerated(ws: Workspace, provenance: Provenance): Diagnos
 				warn(
 					name,
 					'file-untracked',
-					`${full} looks generated but spool has no record of writing it. Run \`spool upgrade\` to start tracking it.`
-				)
+					`${full} looks generated but spool has no record of writing it. Run \`spool upgrade\` to start tracking it.`,
+				),
 			)
 		}
 	}
@@ -605,7 +605,7 @@ function checkUntrackedGenerated(ws: Workspace, provenance: Provenance): Diagnos
 
 function ownerOf(ws: Workspace, rel: string): string {
 	const owner = Object.entries(ws.manifest.apps).find(
-		([, app]) => rel === app.path || rel.startsWith(`${app.path}/`)
+		([, app]) => rel === app.path || rel.startsWith(`${app.path}/`),
 	)
 	return owner?.[0] ?? ''
 }
@@ -631,8 +631,8 @@ function checkHostHeaders(root: string, apps: Apps): Diagnostic[] {
 				warn(
 					name,
 					'host-cors-headers',
-					'public/_headers sends Access-Control-Allow-Origin, which is for a remote serving assets cross-origin. A host does not need it.'
-				)
+					'public/_headers sends Access-Control-Allow-Origin, which is for a remote serving assets cross-origin. A host does not need it.',
+				),
 			)
 		}
 	}
@@ -681,7 +681,7 @@ function checkUnusedShared(ws: Workspace): Diagnostic[] {
 			dep =>
 				!exempt.has(packageName(dep)) &&
 				!source.includes(`"${dep}`) &&
-				!source.includes(`'${dep}`)
+				!source.includes(`'${dep}`),
 		)
 		if (!unused.length) continue
 
@@ -691,8 +691,8 @@ function checkUnusedShared(ws: Workspace): Diagnostic[] {
 			warn(
 				name,
 				'shared-unused',
-				`Shares ${unused.length} entr${unused.length === 1 ? 'y' : 'ies'} nothing under src imports (${shown}${more}). Harmless, but trimming "shared" keeps its manifest smaller.`
-			)
+				`Shares ${unused.length} entr${unused.length === 1 ? 'y' : 'ies'} nothing under src imports (${shown}${more}). Harmless, but trimming "shared" keeps its manifest smaller.`,
+			),
 		)
 	}
 
@@ -729,8 +729,8 @@ function checkSentryEnv(ws: Workspace): Diagnostic[] {
 				warn(
 					name,
 					'sentry-env-missing',
-					'Sentry is on but no .env file here sets VITE_SENTRY_DSN; it will report to nowhere until you set it.'
-				)
+					'Sentry is on but no .env file here sets VITE_SENTRY_DSN; it will report to nowhere until you set it.',
+				),
 			)
 		}
 	}
@@ -760,8 +760,8 @@ function checkStaleTypes(root: string, apps: Apps): Diagnostic[] {
 				warn(
 					name,
 					'types-stale',
-					'.spool/types looks older than an exposed source file. Run `spool types` to refresh it.'
-				)
+					'.spool/types looks older than an exposed source file. Run `spool types` to refresh it.',
+				),
 			)
 		}
 	}

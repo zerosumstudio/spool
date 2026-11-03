@@ -182,7 +182,7 @@ describe('doctor --fix on deps spool writes itself', () => {
 		await doctor({})
 
 		expect(warn).toHaveBeenCalledWith(
-			expect.stringContaining('"typescript" is on more than one version')
+			expect.stringContaining('"typescript" is on more than one version'),
 		)
 	})
 
@@ -263,7 +263,7 @@ describe('doctor: port already in use', () => {
 	it('reports the pid and command holding a manifest port', async () => {
 		const { portOwner } = await import('../../util/net.js')
 		vi.mocked(portOwner).mockImplementation(async port =>
-			port === 5173 ? { pid: 4242, command: 'node' } : undefined
+			port === 5173 ? { pid: 4242, command: 'node' } : undefined,
 		)
 
 		const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})

@@ -32,7 +32,7 @@ test.describe('<Remote> error boundary', () => {
 		let down = true
 		await page.route(
 			url => url.origin === appOrigin('assessments') && url.pathname === '/remoteEntry.js',
-			route => (down ? route.abort('connectionrefused') : route.continue())
+			route => (down ? route.abort('connectionrefused') : route.continue()),
 		)
 		await page.goto(`${appOrigin('shell')}/new`)
 		await expect(page.getByRole('alert')).toBeVisible()

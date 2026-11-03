@@ -69,7 +69,7 @@ export function recordDeploy(
 	ws: Workspace,
 	env: string,
 	appName: string,
-	record: DeployRecord
+	record: DeployRecord,
 ): void {
 	const store = readDeployStore(ws)
 	const forEnv = (store[env] ??= {})
@@ -100,7 +100,7 @@ export function sharedConflicts(
 	store: DeployStore,
 	env: string,
 	appName: string,
-	entries: SharedEntry[]
+	entries: SharedEntry[],
 ): SharedConflict[] {
 	const others = store[env] ?? {}
 	const conflicts: SharedConflict[] = []

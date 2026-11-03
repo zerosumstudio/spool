@@ -33,7 +33,7 @@ describe('dev', () => {
 		await dev({ rest: 'built' })
 		expect(devAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ rest: { kind: 'built' } })
+			expect.objectContaining({ rest: { kind: 'built' } }),
 		)
 	})
 
@@ -41,7 +41,7 @@ describe('dev', () => {
 		await dev({ rest: 'staging' })
 		expect(devAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ rest: { kind: 'env', env: 'staging' } })
+			expect.objectContaining({ rest: { kind: 'env', env: 'staging' } }),
 		)
 	})
 
@@ -49,7 +49,7 @@ describe('dev', () => {
 		await dev({ timeout: '5' })
 		expect(devAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ timeoutSeconds: 5 })
+			expect.objectContaining({ timeoutSeconds: 5 }),
 		)
 	})
 
@@ -62,7 +62,7 @@ describe('dev', () => {
 		await dev({ ladle: false })
 		expect(devAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ ladle: false })
+			expect.objectContaining({ ladle: false }),
 		)
 	})
 })

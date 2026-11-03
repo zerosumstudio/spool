@@ -56,7 +56,7 @@ export async function requireWorkspace(cwd = process.cwd()): Promise<Workspace> 
 	const ws = await loadWorkspace(cwd)
 	if (!ws) {
 		throw new CliError(
-			`No ${MANIFEST_FILE} found. Run \`spool create\` first, or cd into a spool workspace.`
+			`No ${MANIFEST_FILE} found. Run \`spool create\` first, or cd into a spool workspace.`,
 		)
 	}
 	return ws

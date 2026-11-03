@@ -48,7 +48,7 @@ describe('emptyManifest', () => {
 describe('parseManifest', () => {
 	it('rejects the rspack bundler with a friendly message', () => {
 		expect(() => parseManifest({ name: 'acme', bundler: 'rspack', apps: {} })).toThrow(
-			'not supported yet'
+			'not supported yet',
 		)
 	})
 
@@ -72,7 +72,7 @@ describe('parseManifest', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { dash: { ...remote(), urls: { staging: 'not-a-url' } } },
-			})
+			}),
 		).toThrow('Invalid')
 	})
 
@@ -100,7 +100,7 @@ describe('parseManifest', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { x: { type: 'widget', path: 'apps/x', port: 1 } },
-			})
+			}),
 		).toThrow()
 	})
 
@@ -125,7 +125,7 @@ describe('parseManifest', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { dash: { ...remote(), expose: { './App': './src/app/app.tsx' } } },
-			})
+			}),
 		).toThrow(/expose/)
 	})
 
@@ -136,7 +136,7 @@ describe('parseManifest', () => {
 		})
 		expect(ok.apps.dash?.deploy).toBe('wrangler pages deploy dist')
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { dash: { ...remote(), deploy: 42 } } })
+			parseManifest({ name: 'acme', apps: { dash: { ...remote(), deploy: 42 } } }),
 		).toThrow(/apps\.dash\.deploy/)
 	})
 
@@ -147,13 +147,13 @@ describe('parseManifest', () => {
 		})
 		expect(ok.apps.dash?.url).toBe('https://cdn.example.com/mf-manifest.json')
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { dash: { ...remote(), url: 'not a url' } } })
+			parseManifest({ name: 'acme', apps: { dash: { ...remote(), url: 'not a url' } } }),
 		).toThrow()
 	})
 
 	it('reports the offending path in a readable message', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { dash: { ...remote(), port: 'high' } } })
+			parseManifest({ name: 'acme', apps: { dash: { ...remote(), port: 'high' } } }),
 		).toThrow(/apps\.dash\.port/)
 	})
 
@@ -163,7 +163,7 @@ describe('parseManifest', () => {
 
 	it('rejects an app key that is not a safe name', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { 'a/b': host({ port: 5173 }) } })
+			parseManifest({ name: 'acme', apps: { 'a/b': host({ port: 5173 }) } }),
 		).toThrow()
 	})
 
@@ -196,7 +196,7 @@ describe('headers, frameAncestors and overrides', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { shell: { ...host(), headers: { 'X-Test': 42 } } },
-			})
+			}),
 		).toThrow()
 	})
 
@@ -226,7 +226,7 @@ describe('server.fs.allow', () => {
 
 	it('rejects an empty or blank entry', () => {
 		expect(() => withAllow([''])).toThrow(
-			/server\.fs\.allow\.0: server\.fs\.allow entries cannot be empty/
+			/server\.fs\.allow\.0: server\.fs\.allow entries cannot be empty/,
 		)
 		expect(() => withAllow(['  '])).toThrow(/cannot be empty/)
 	})
@@ -241,7 +241,11 @@ describe('server.fs.allow', () => {
 		expect(() => withAllow('../contracts')).toThrow()
 		expect(() => withAllow([42])).toThrow()
 		expect(() =>
-			parseManifest({ name: 'acme', server: { fs: { allow: [], deny: ['.env'] } }, apps: {} })
+			parseManifest({
+				name: 'acme',
+				server: { fs: { allow: [], deny: ['.env'] } },
+				apps: {},
+			}),
 		).toThrow(/deny/)
 	})
 })
@@ -296,25 +300,28 @@ describe('addons', () => {
 describe('app path confinement', () => {
 	it('rejects an absolute path', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: '/etc/apps/shell' } } })
+			parseManifest({
+				name: 'acme',
+				apps: { shell: { ...host(), path: '/etc/apps/shell' } },
+			}),
 		).toThrow(/invalid path/)
 	})
 
 	it('rejects a path with a ".." segment', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: '../outside' } } })
+			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: '../outside' } } }),
 		).toThrow(/invalid path/)
 	})
 
 	it('rejects a trailing slash', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: 'apps/shell/' } } })
+			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: 'apps/shell/' } } }),
 		).toThrow(/invalid path/)
 	})
 
 	it('names the offending app in the message', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: '..' } } })
+			parseManifest({ name: 'acme', apps: { shell: { ...host(), path: '..' } } }),
 		).toThrow(/App "shell"/)
 	})
 })
@@ -325,7 +332,7 @@ describe('app path confinement', () => {
 describe('remotes validation', () => {
 	it('rejects an app that lists itself as a remote', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { shell: host({ remotes: ['shell'] }) } })
+			parseManifest({ name: 'acme', apps: { shell: host({ remotes: ['shell'] }) } }),
 		).toThrow(/lists itself/)
 	})
 
@@ -337,13 +344,13 @@ describe('remotes validation', () => {
 					shell: host({ remotes: ['dashboard', 'dashboard'] }),
 					dashboard: remote(),
 				},
-			})
+			}),
 		).toThrow(/more than once/)
 	})
 
 	it('rejects a remote that is not in the manifest', () => {
 		expect(() =>
-			parseManifest({ name: 'acme', apps: { shell: host({ remotes: ['ghost'] }) } })
+			parseManifest({ name: 'acme', apps: { shell: host({ remotes: ['ghost'] }) } }),
 		).toThrow(/not in this workspace/)
 	})
 
@@ -355,7 +362,7 @@ describe('remotes validation', () => {
 					a: remote({ path: 'apps/a', port: 1, remotes: ['b'] }),
 					b: remote({ path: 'apps/b', port: 2, remotes: ['a'] }),
 				},
-			})
+			}),
 		).toThrow(/cycle: a -> b -> a/)
 	})
 
@@ -381,7 +388,7 @@ describe('exposes validation', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { dash: { ...remote(), exposes: { App: './src/app/app.tsx' } } },
-			})
+			}),
 		).toThrow(/must start with/)
 	})
 
@@ -390,7 +397,7 @@ describe('exposes validation', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { dash: { ...remote(), exposes: { './App': '../shared/App.tsx' } } },
-			})
+			}),
 		).toThrow(/must stay inside/)
 	})
 
@@ -399,7 +406,7 @@ describe('exposes validation', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { dash: { ...remote(), exposes: { './App': '/abs/App.tsx' } } },
-			})
+			}),
 		).toThrow(/must stay inside/)
 	})
 })
@@ -464,7 +471,7 @@ describe('frameAncestors edge token', () => {
 			parseManifest({
 				name: 'acme',
 				apps: { shell: { ...host(), frameAncestors: ['edge', 'https://a.test'] } },
-			})
+			}),
 		).toThrow(/stands alone/)
 	})
 })

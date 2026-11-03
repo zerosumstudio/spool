@@ -1,10 +1,13 @@
-# spool
+# <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zerosumstudio/spool/main/.github/assets/zerosum-on-dark.png"><img src="https://raw.githubusercontent.com/zerosumstudio/spool/main/.github/assets/zerosum-on-light.png" alt="" height="32"></picture> spool
 
+[![npm version](https://badge.fury.io/js/@zerosumstudio%2Fspool.svg)](https://badge.fury.io/js/@zerosumstudio%2Fspool)
+[![Release](https://github.com/zerosumstudio/spool/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/zerosumstudio/spool/actions/workflows/release.yml)
+[![codecov](https://codecov.io/gh/zerosumstudio/spool/branch/main/graph/badge.svg)](https://codecov.io/gh/zerosumstudio/spool)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-spool is a small CLI for building micro frontends. It scaffolds a monorepo of Module Federation apps on Vite, runs them together with one command, and keeps all the wiring in a single `spool.json`. Describe your apps once and spool handles the rest.
+spool is a small CLI for building micro frontends. It scaffolds a monorepo of Module Federation apps on Vite, runs them together with one command, and keeps all the wiring in a single `spool.json`.
 
-**Live demo:** [spool-demo-shell.pages.dev](https://spool-demo-shell.pages.dev), a music UI where the browse view, search, and player bar are independently deployed remotes sharing one player state through [@zerosumstudio/clutch](https://github.com/zerosumstudio/clutch).
+Live demo: [spool-demo-shell.pages.dev](https://spool-demo-shell.pages.dev), a music UI where the browse view, search, and player bar are independently deployed remotes sharing one player state through [@zerosumstudio/clutch](https://github.com/zerosumstudio/clutch).
 
 ## Install
 
@@ -12,7 +15,7 @@ spool is a small CLI for building micro frontends. It scaffolds a monorepo of Mo
 npm install -g @zerosumstudio/spool
 ```
 
-You'll need Node 22.13 or newer. Workspaces run on pnpm, npm, or yarn.
+Requires Node 22.12 or newer. Workspaces run on pnpm, npm or yarn.
 
 Up to 4.0.0 this was published as `@bkincz/spool`. Run `npm uninstall -g @bkincz/spool` before installing the new name, since both provide the `spool` command. In an existing workspace, swap `@bkincz/spool` for `@zerosumstudio/spool` in the root `package.json`. If you use the shared state addon, swap `@bkincz/clutch` for `@zerosumstudio/clutch` in `spool.json`, each app's `package.json` and your imports, then reinstall. Spool leaves the old names alone, so nothing breaks if you wait.
 
@@ -24,42 +27,42 @@ cd acme
 spool dev
 ```
 
-Open http://localhost:5173 to see the host with its remotes mounted. Prefer prompts? Just run `spool create` on its own.
+Open http://localhost:5173 to see the host with its remotes mounted. Run `spool create` with no arguments to be prompted instead.
 
 ## Commands
 
-| Command                                          | What it does                                                                         |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `spool create [dir]`                             | Scaffold a workspace                                                                 |
-| `spool dev [--only] [--rest] [--kill]`           | Run all apps together, remotes first                                                 |
-| `spool build [--only] [--env] [--json]`          | Production build. Remotes first, then hosts, each tier in parallel                   |
-| `spool preview [--only] [--kill]`                | Serve the built apps locally                                                         |
-| `spool types [--only]`                           | Type each remote's exposes from its real source                                      |
-| `spool add <name>`                               | Add an app and wire it in                                                            |
-| `spool addon [list] [--only]`                    | Add extras to an existing workspace, optionally to some apps only                    |
-| `spool remove <name> [--files]`                  | Remove an app and unwire it from every consumer. `--files` asks before deleting      |
-| `spool deploy [--only] [--env] [--json]`         | Run each app's `deploy` command, remotes first, and record the deploy                |
-| `spool promote --env <env> <app>@<sha>`          | Re-run a recorded deploy against another environment                                 |
-| `spool rollback --env <env> <app>`               | Re-run an app's previous deploy for an environment                                   |
-| `spool ci [--force] [--pin]`                     | Generate GitHub workflows: one checking the workspace, one per deployable app        |
-| `spool upgrade [--dry-run] [--force]`            | Regenerate spool-owned files and move dependencies forward to match the workspace    |
-| `spool doctor [--fix] [--json]`                  | Check ports, wiring, generated files, and dependencies. `--fix` repairs what it can  |
-| `spool graph [--json] [--dot]`                   | Print hosts, remotes, what each consumes and exposes, and the shared list            |
-| `spool affected --since <ref> [--json]`          | List apps changed since a git ref, directly or through a package they import         |
-| `spool eject [--yes]`                            | Remove the spool dependency and keep everything it generated                         |
+| Command                                                 | What it does                                                                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `spool create [dir]`                                    | Scaffold a workspace                                                                                     |
+| `spool dev [--only] [--rest] [--kill]`                  | Run all apps together, remotes first                                                                     |
+| `spool build [--only] [--env] [--concurrency] [--json]` | Production build. Remotes first, then hosts, each tier in parallel                                       |
+| `spool preview [--only] [--kill]`                       | Serve the built apps locally                                                                             |
+| `spool types [--only]`                                  | Type each remote's exposes from its real source                                                          |
+| `spool add <name>`                                      | Add an app and wire it in                                                                                |
+| `spool addon [addons...] [--only]`                      | Add extras to an existing workspace, optionally to some apps only                                        |
+| `spool remove <name> [--files] [--yes]`                 | Remove an app and unwire it from every consumer. `--files` asks before deleting                          |
+| `spool deploy [--only] [--env] [--json]`                | Run each app's `deploy` command, remotes first, and record the deploy                                    |
+| `spool promote --env <env> <app>@<sha>`                 | Re-run a recorded deploy against another environment                                                     |
+| `spool rollback --env <env> <app>`                      | Re-run an app's previous deploy for an environment                                                       |
+| `spool ci [--force] [--pin]`                            | Generate GitHub workflows: one checking the workspace, one per deployable app. `--pin` implies `--force` |
+| `spool upgrade [--dry-run] [--pin] [--force]`           | Regenerate spool-owned files and move dependencies forward to match the workspace                        |
+| `spool doctor [--fix] [--remote] [--env] [--json]`      | Check ports, wiring, generated files, and dependencies. `--fix` repairs what it can                      |
+| `spool graph [--json] [--dot]`                          | Print hosts, remotes, what each consumes and exposes, and the shared list                                |
+| `spool affected --since <ref> [--json]`                 | List apps changed since a git ref, directly or through a package they import                             |
+| `spool eject [--yes]`                                   | Remove the spool dependency and keep everything it generated                                             |
 
 ### create
 
-| Option              | Description                                                                                                       |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `-n, --name <name>` | Workspace name (defaults to the folder name)                                                                      |
-| `--host <name>`     | Host app, as `name` or `name:framework`                                                                           |
-| `--remotes <list>`  | Comma-separated remotes, each as `name` or `name:framework`                                                       |
-| `--framework <fw>`  | Default framework: `react`, `svelte`, or `vue`                                                                    |
+| Option              | Description                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `-n, --name <name>` | Workspace name (defaults to the folder name)                                                                     |
+| `--host <name>`     | Host app, as `name` or `name:framework`                                                                          |
+| `--remotes <list>`  | Comma-separated remotes, each as `name` or `name:framework`                                                      |
+| `--framework <fw>`  | Default framework: `react`, `svelte`, or `vue`                                                                   |
 | `--addons <list>`   | Extras: `ladle`, `playwright`, `lint`, `test`, `turbo`, `state`, `sentry`, `navigation`, `federation`, or `none` |
-| `--pm <manager>`    | `pnpm`, `npm`, or `yarn`                                                                                          |
-| `--here`            | Scaffold into the current folder                                                                                  |
-| `--no-install`      | Skip the install step                                                                                             |
+| `--pm <manager>`    | `pnpm`, `npm`, or `yarn`                                                                                         |
+| `--here`            | Scaffold into the current folder                                                                                 |
+| `--no-install`      | Skip the install step                                                                                            |
 
 Anything you leave out, spool asks for. Names are lowercase with single hyphens, like `acme-frontend`.
 
@@ -98,7 +101,8 @@ spool dev --only dashboard --rest built           # everything else from dist/
 
 Everything lives in one `spool.json`. Each app's `vite.config.ts` reads it through `spool.vite.ts` when Vite starts, so the manifest is the only thing you ever edit.
 
-```jsonc
+<!-- prettier-ignore -->
+```json
 {
   "name": "acme",
   "packageManager": "pnpm",
@@ -111,30 +115,34 @@ Everything lives in one `spool.json`. Each app's `vite.config.ts` reads it throu
 }
 ```
 
-| Field                        | Description                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `shared`                     | Deps shared as singletons across apps                                                                |
-| `shareStrategy`              | Optional. `loaded-first` (default) or `version-first`                                                |
-| `overrides`                  | Optional. `true` keeps runtime remote overrides on in production builds (default `false`)            |
-| `server`                     | Optional. Dev server settings every app gets: `proxy`, `headers`, `host`, `cors`, `fs.allow`         |
-| `apps.<name>.type`           | `host` consumes remotes, `remote` exposes modules                                                    |
-| `apps.<name>.framework`      | `react` (default), `svelte`, or `vue`                                                                |
-| `apps.<name>.port`           | Dev server port                                                                                      |
-| `apps.<name>.remotes`        | Remotes this app mounts. A remote can consume remotes too                                            |
-| `apps.<name>.exposes`        | Modules a remote exposes, keys starting with `./`                                                    |
-| `apps.<name>.url`            | Optional. Deployed `mf-manifest.json`, used by host production builds                                |
-| `apps.<name>.urls`           | Optional. Per-environment manifests, e.g. `{ "staging": "https://..." }`. `--env` selects one        |
-| `apps.<name>.deploy`         | Optional. Shell command `spool deploy` runs in the app folder                                        |
-| `apps.<name>.headers`        | Optional. Extra response headers for this app, in dev, preview, and the generated `_headers`        |
-| `apps.<name>.frameAncestors` | Optional. Who may frame this app: `self`, `none`, origins, or `edge` alone. Default `self`           |
+| Field                        | Description                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `packageManager`             | `pnpm` (default), `npm`, or `yarn`                                                                     |
+| `addons`                     | Extras enabled in this workspace                                                                       |
+| `shared`                     | Deps shared as singletons across apps. Defaults to `react` and `react-dom`                             |
+| `shareStrategy`              | Optional. `loaded-first` (default) or `version-first`                                                  |
+| `overrides`                  | Optional. `true` keeps runtime remote overrides on in production builds (default `false`)              |
+| `server`                     | Optional. Dev server settings every app gets: `proxy`, `headers`, `host`, `cors`, `fs.allow`           |
+| `apps.<name>.type`           | `host` consumes remotes, `remote` exposes modules                                                      |
+| `apps.<name>.framework`      | `react` (default), `svelte`, or `vue`                                                                  |
+| `apps.<name>.port`           | Dev server port                                                                                        |
+| `apps.<name>.remotes`        | Remotes this app mounts. A remote can consume remotes too                                              |
+| `apps.<name>.exposes`        | Modules a remote exposes, keys starting with `./`                                                      |
+| `apps.<name>.url`            | Optional. Deployed `mf-manifest.json`, used by host production builds                                  |
+| `apps.<name>.urls`           | Optional. Per-environment manifests, e.g. `{ "staging": "https://..." }`. `--env` selects one          |
+| `apps.<name>.deploy`         | Optional. Shell command `spool deploy` runs in the app folder                                          |
+| `apps.<name>.headers`        | Optional. Extra response headers for this app, in dev, preview, and the generated `_headers`           |
+| `apps.<name>.frameAncestors` | Optional. List of who may frame this app: `self`, `none`, origins, or `["edge"]` alone. Default `self` |
 
 Settings every app needs from the dev server go in `server`, so you never edit a generated `vite.config.ts`:
 
-```jsonc
+```json
 {
-  "server": {
-    "proxy": { "/api": { "target": "${ACME_BACKEND:-http://localhost:3000}", "changeOrigin": true } }
-  }
+	"server": {
+		"proxy": {
+			"/api": { "target": "${ACME_BACKEND:-http://localhost:3000}", "changeOrigin": true }
+		}
+	}
 }
 ```
 
@@ -150,11 +158,11 @@ frontend/spool.json
 frontend/apps/shell
 ```
 
-```jsonc
+```json
 {
-  "server": {
-    "fs": { "allow": ["../contracts/packages"] }
-  }
+	"server": {
+		"fs": { "allow": ["../contracts/packages"] }
+	}
 }
 ```
 
@@ -168,7 +176,7 @@ The manifest is validated when it loads. A remote that names itself or an app th
 
 - `spool doctor` checks ports (including one another process holds), wiring, exposed files, registry and typings, generated files against what spool wrote, shared dep versions across every workspace member, shared entries an app never imports, and the environment the addons need. `--fix` repairs what it safely can, `--dry-run` shows the changes first, and `--json` prints the problems for CI.
 - `spool upgrade` never overwrites your edits. Spool hashes every file it writes into `.spool/generated.json`, so a later run can tell its own output from yours. Edited files are offered, not replaced. `--force` skips the asking and takes paths to limit it. Commit `.spool/generated.json`; `.spool/types` and pidfiles are ignored.
-- Versions only ever move forward, onto the highest range already in the workspace, so a workspace ahead of spool stays ahead. Prereleases and `>=` ranges are never chosen as the target.
+- Versions only ever move forward, onto the highest range already in the workspace, so a workspace ahead of spool stays ahead. `--pin` writes spool's own ranges regardless. Prereleases and `>=` ranges are never chosen as the target.
 - `spool build` runs a tier at once and then compares what each app resolved for every shared dep, failing only when one app would load a version another cannot accept. `--concurrency <n>` caps the parallelism.
 - `spool graph` shows the workspace as a tree, or as `--dot` for Graphviz. `spool affected --since main` lists the apps a change touches, directly or through a workspace package they import.
 - `spool eject` removes the spool dependency and leaves the rest in place. `spool.json`, `spool.vite.ts`, `spool.workspace.ts` and every generated config keep working without the CLI.
@@ -185,7 +193,7 @@ The manifest is validated when it loads. A remote that names itself or an app th
 import { apps, hosts, remotes, srcDirs, app, root } from '../../spool.workspace'
 ```
 
-Each app has `name`, `type`, `framework`, `port`, absolute `dir` and `src`, `remotes`, and `exposes`.
+Each app has `name`, `type`, `framework`, `port`, absolute `dir` and `src`, `remotes`, and `exposes`. The module also exports `workspaceName`, `shared` and `addons`.
 
 ## Frameworks
 
@@ -220,11 +228,13 @@ import { Remote, preloadRemote, type RemoteName } from '@/federation'
 const routes: Record<string, RemoteName> = { '/': 'browse', '/search': 'search' }
 const active = matchRoute(useLocation().pathname, routes)
 return (
-  <>
-    <Remote name="player" props={{ compact: true }} /> {/* always mounted */}
-    {active && <Remote name={active} />} {/* swaps with the url */}
-    <a href="/search" onMouseEnter={() => preloadRemote('search')}>Search</a>
-  </>
+	<>
+		<Remote name="player" props={{ compact: true }} /> {/* always mounted */}
+		{active && <Remote name={active} />} {/* swaps with the url */}
+		<a href="/search" onMouseEnter={() => preloadRemote('search')}>
+			Search
+		</a>
+	</>
 )
 ```
 
@@ -301,4 +311,4 @@ Run `spool upgrade`, then `spool doctor`. Generated files you edited are offered
 
 ## License
 
-MIT
+MIT © zerosum studio

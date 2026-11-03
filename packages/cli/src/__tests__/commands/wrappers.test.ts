@@ -68,7 +68,7 @@ describe('dev', () => {
 		await dev({ only: 'shell, dashboard' })
 		expect(devAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ only: ['shell', 'dashboard'] })
+			expect.objectContaining({ only: ['shell', 'dashboard'] }),
 		)
 	})
 })
@@ -86,7 +86,7 @@ describe('preview', () => {
 		await preview({ only: 'shell, dashboard' })
 		expect(previewAll).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ only: ['shell', 'dashboard'] })
+			expect.objectContaining({ only: ['shell', 'dashboard'] }),
 		)
 	})
 })
@@ -101,7 +101,7 @@ describe('build', () => {
 			expect.objectContaining({ root: dir }),
 			undefined,
 			undefined,
-			undefined
+			undefined,
 		)
 	})
 
@@ -111,7 +111,7 @@ describe('build', () => {
 			expect.anything(),
 			['dashboard'],
 			'staging',
-			undefined
+			undefined,
 		)
 	})
 
@@ -136,7 +136,7 @@ describe('deploy', () => {
 		expect(deployAll).toHaveBeenCalledWith(
 			expect.objectContaining({ root: dir }),
 			undefined,
-			undefined
+			undefined,
 		)
 	})
 

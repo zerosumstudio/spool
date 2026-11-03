@@ -261,7 +261,7 @@ export function parseAddonList(value: string, m: Manifest): AddonName[] {
 /** Multiselect over `names`. Non-TTY runs get no addons, since a prompt could never resolve. */
 export async function promptAddons(
 	message: string,
-	names: AddonName[]
+	names: AddonName[],
 ): Promise<AddonName[] | null> {
 	if (!names.length || !process.stdin.isTTY) return []
 

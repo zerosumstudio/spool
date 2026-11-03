@@ -94,8 +94,8 @@ export function remoteAliasModule(m: Manifest, app: AppConfig): string {
 	const entries = refs.flatMap(ref =>
 		ref.exposes.map(
 			expose =>
-				`  "${ref.name}/${expose}": resolvePath(here, "${basename(STUBS[ref.contract])}"),`
-		)
+				`  "${ref.name}/${expose}": resolvePath(here, "${basename(STUBS[ref.contract])}"),`,
+		),
 	)
 
 	// An app with no remotes still exports the map, so vitest.config.ts stays

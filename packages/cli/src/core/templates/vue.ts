@@ -161,7 +161,7 @@ function vueHostApp(appName: string, refs: RemoteRef[], extras: TemplateExtras):
 			r => `    <section>
       <h2>${r.name}</h2>
       <div ref="${camelCase(r.name)}El"></div>
-    </section>`
+    </section>`,
 		)
 		.join('\n')
 

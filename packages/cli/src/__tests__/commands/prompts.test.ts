@@ -19,7 +19,7 @@ vi.mock('@clack/prompts', () => ({
 	isCancel: vi.fn(() => false),
 	text: vi.fn(),
 	select: vi.fn((opts: { message: string }) =>
-		Promise.resolve(opts.message.startsWith('Framework') ? 'react' : 'pnpm')
+		Promise.resolve(opts.message.startsWith('Framework') ? 'react' : 'pnpm'),
 	),
 	multiselect: vi.fn(() => Promise.resolve([])),
 	spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
@@ -65,7 +65,7 @@ describe('create (interactive)', () => {
 
 		expect(p.text).toHaveBeenCalledTimes(3)
 		const manifest = JSON.parse(
-			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8')
+			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8'),
 		)
 		expect(manifest.name).toBe('myapp')
 		expect(Object.keys(manifest.apps).sort()).toEqual(['host1', 'one', 'two'])
@@ -97,7 +97,7 @@ describe('create (interactive)', () => {
 		await create(undefined, { here: true })
 
 		const manifest = JSON.parse(
-			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8')
+			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8'),
 		)
 		expect(manifest.apps.host1.framework).toBe('vue')
 		expect(manifest.apps.one.framework).toBe('svelte')
@@ -114,7 +114,7 @@ describe('create (interactive)', () => {
 		await create(undefined, { here: true, host: 'shell' })
 
 		const manifest = JSON.parse(
-			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8')
+			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8'),
 		)
 		expect(manifest.apps.shell.framework).toBe('svelte')
 		expect(manifest.apps.one.framework).toBe('vue')
@@ -131,11 +131,11 @@ describe('create (interactive)', () => {
 		const frameworkPrompts = vi
 			.mocked(p.select)
 			.mock.calls.filter(([opts]) =>
-				(opts as { message: string }).message.startsWith('Framework')
+				(opts as { message: string }).message.startsWith('Framework'),
 			)
 		expect(frameworkPrompts).toHaveLength(0)
 		const manifest = JSON.parse(
-			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8')
+			(await import('node:fs')).readFileSync(join(dir, 'spool.json'), 'utf8'),
 		)
 		expect(manifest.apps.host1.framework).toBe('svelte')
 		expect(manifest.apps.one.framework).toBe('svelte')
@@ -183,7 +183,7 @@ describe('create (interactive)', () => {
 		await create(undefined, { here: true })
 
 		expect(readFileSync(join(dir, 'apps/shell/.env'), 'utf8')).toContain(
-			'VITE_SENTRY_DSN=https://k@o.ingest.sentry.io/1'
+			'VITE_SENTRY_DSN=https://k@o.ingest.sentry.io/1',
 		)
 		expect(readFileSync(join(dir, 'apps/one/.env'), 'utf8')).toContain('VITE_SENTRY_DSN=')
 	})
@@ -272,7 +272,7 @@ describe('create (install)', () => {
 	it('survives a failed install without throwing', async () => {
 		vi.mocked(run).mockRejectedValueOnce(new Error('offline'))
 		await expect(
-			create(undefined, { name: 'acme', pm: 'pnpm', host: 'shell', remotes: '', here: true })
+			create(undefined, { name: 'acme', pm: 'pnpm', host: 'shell', remotes: '', here: true }),
 		).resolves.toBeUndefined()
 	})
 })

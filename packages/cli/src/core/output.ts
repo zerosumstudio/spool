@@ -53,7 +53,7 @@ export class DevOutput {
 
 	constructor(
 		private total: number,
-		private readonly mode: ServeMode
+		private readonly mode: ServeMode,
 	) {
 		this.timer = setTimeout(() => {
 			log.warn('The servers have not reported ready yet. Streaming their logs.')
@@ -145,7 +145,7 @@ export class DevOutput {
 		if (this.streaming) return
 
 		const ordered = [...this.statuses.values()].sort((a, b) =>
-			a.name === lastName ? 1 : b.name === lastName ? -1 : 0
+			a.name === lastName ? 1 : b.name === lastName ? -1 : 0,
 		)
 
 		for (const status of ordered) this.drain(status)
@@ -312,7 +312,7 @@ export class DevOutput {
 		if (initial) {
 			const blank = '\n'.repeat(rows)
 			process.stdout.write(
-				`${blank}\x1b[H\n${this.panel.join('\n')}\n\x1b[${top};${rows}r\x1b[${top};1H`
+				`${blank}\x1b[H\n${this.panel.join('\n')}\n\x1b[${top};${rows}r\x1b[${top};1H`,
 			)
 
 			return

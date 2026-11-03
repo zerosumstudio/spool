@@ -41,7 +41,7 @@ describe('TOOLCHAIN', () => {
 
 		expect(
 			checked,
-			'no TOOLCHAIN dep overlaps the CLI, so this test proves nothing'
+			'no TOOLCHAIN dep overlaps the CLI, so this test proves nothing',
 		).toBeGreaterThan(0)
 	})
 })

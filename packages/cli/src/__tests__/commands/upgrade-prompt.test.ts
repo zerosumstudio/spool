@@ -126,7 +126,7 @@ describe('upgrade overwrite prompt', () => {
 		await upgrade({})
 
 		expect(p.select).toHaveBeenCalledWith(
-			expect.objectContaining({ message: expect.stringContaining('predates') })
+			expect.objectContaining({ message: expect.stringContaining('predates') }),
 		)
 	})
 

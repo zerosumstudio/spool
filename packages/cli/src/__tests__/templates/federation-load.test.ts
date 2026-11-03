@@ -51,14 +51,14 @@ beforeAll(async () => {
 	// Stands in for @module-federation/runtime: getInstance() returns whatever the test installs.
 	writeFileSync(
 		join(dir, 'runtime.mjs'),
-		`export const getInstance = () => globalThis.${INSTANCE_KEY} ?? null;\n`
+		`export const getInstance = () => globalThis.${INSTANCE_KEY} ?? null;\n`,
 	)
 	expect(code).toMatch(ENTRY_IMPORT)
 	writeFileSync(
 		join(dir, 'load.mjs'),
 		code
 			.replace('"@module-federation/runtime"', JSON.stringify('./runtime.mjs'))
-			.replace(ENTRY_IMPORT, `globalThis.${IMPORT_ENTRY_KEY}(url)`)
+			.replace(ENTRY_IMPORT, `globalThis.${IMPORT_ENTRY_KEY}(url)`),
 	)
 	loadUrl = pathToFileURL(join(dir, 'load.mjs')).href
 	;(globalThis as Record<string, unknown>)[IMPORT_ENTRY_KEY] = importEntry
@@ -172,7 +172,7 @@ describe('generated load.ts: remote entry plugin', () => {
 
 		expect(instance.registerPlugins).toHaveBeenCalledOnce()
 		expect(instance.registerPlugins.mock.invocationCallOrder[0]).toBeLessThan(
-			importRemote.mock.invocationCallOrder[0]!
+			importRemote.mock.invocationCallOrder[0]!,
 		)
 		expect(entriesPlugin(instance).name).toBe('spool-remote-entries')
 	})
@@ -351,7 +351,7 @@ describe('generated load.ts: loadRemote', () => {
 		})
 
 		await expect(loadRemote('assessments/NewAssessment', importRemote)).rejects.toThrow(
-			'Failed to fetch remoteEntry.js'
+			'Failed to fetch remoteEntry.js',
 		)
 		await expect(loadRemote('assessments/NewAssessment', importRemote)).resolves.toEqual({
 			default: 'runtime:assessments/NewAssessment',
@@ -362,7 +362,7 @@ describe('generated load.ts: loadRemote', () => {
 			force: true,
 		})
 		expect(instance.registerRemotes.mock.invocationCallOrder[0]).toBeLessThan(
-			instance.loadRemote.mock.invocationCallOrder[0]!
+			instance.loadRemote.mock.invocationCallOrder[0]!,
 		)
 	})
 
@@ -402,7 +402,7 @@ describe('generated load.ts: loadRemote', () => {
 			() =>
 				new Promise(resolve => {
 					finish = () => resolve({ default: 'runtime' })
-				})
+				}),
 		)
 		const failed = () => Promise.reject(new Error('Failed to fetch remoteEntry.js'))
 		await loadRemote('assessments', failed).catch(() => undefined)
@@ -438,7 +438,7 @@ describe('generated load.ts: loadRemote', () => {
 
 		await loadRemote('assessments/App', importRemote).catch(() => undefined)
 		await expect(loadRemote('assessments/App', importRemote)).rejects.toThrow(
-			'remote "assessments/App" loaded nothing'
+			'remote "assessments/App" loaded nothing',
 		)
 	})
 
@@ -472,10 +472,10 @@ describe('generated remotes.ts', () => {
 
 		expect(registry).toContain('import { loadRemote } from "./load"')
 		expect(registry).toContain(
-			'"assessments": { contract: "component", load: () => loadRemote("assessments/App", () => import("assessments/App")) }'
+			'"assessments": { contract: "component", load: () => loadRemote("assessments/App", () => import("assessments/App")) }',
 		)
 		expect(registry).toContain(
-			'"assessments/NewAssessment": { contract: "component", load: () => loadRemote("assessments/NewAssessment", () => import("assessments/NewAssessment")) }'
+			'"assessments/NewAssessment": { contract: "component", load: () => loadRemote("assessments/NewAssessment", () => import("assessments/NewAssessment")) }',
 		)
 	})
 })

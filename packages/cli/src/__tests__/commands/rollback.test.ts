@@ -27,7 +27,7 @@ describe('rollback', () => {
 		expect(rollbackApp).toHaveBeenCalledWith(
 			expect.objectContaining({ root: '/ws' }),
 			'production',
-			'dashboard'
+			'dashboard',
 		)
 	})
 })

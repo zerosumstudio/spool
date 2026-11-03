@@ -56,7 +56,7 @@ describe('ciWorkflows (raw)', () => {
 	it('keeps workflow_dispatch on both workflows', () => {
 		expect(ciWorkflows(m)['.github/workflows/ci.yml']).toContain('workflow_dispatch:')
 		expect(ciWorkflows(m)['.github/workflows/deploy-dashboard.yml']).toContain(
-			'workflow_dispatch:'
+			'workflow_dispatch:',
 		)
 	})
 
@@ -109,7 +109,7 @@ describe('ciWorkflows (raw)', () => {
 			const yaml = ciWorkflows(
 				m,
 				{},
-				{ pins: { checkout: 'actions/checkout@deadbeef # v7' } }
+				{ pins: { checkout: 'actions/checkout@deadbeef # v7' } },
 			)['.github/workflows/ci.yml']!
 			expect(yaml).toContain('actions/checkout@deadbeef # v7')
 			// setup-node was not pinned, so it still falls back to its tag.
@@ -154,7 +154,7 @@ describe('deploy secrets', () => {
 		const yaml = ciWorkflows(m)['.github/workflows/deploy-dashboard.yml']!
 
 		expect(yaml).toContain(
-			'              env:\n                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}'
+			'              env:\n                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}',
 		)
 		expect(yaml).toContain('CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}')
 		expect(yaml).not.toContain('# env:')

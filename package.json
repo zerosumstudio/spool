@@ -3,35 +3,33 @@
 	"version": "1.0.0",
 	"private": true,
 	"description": "spool: toolset for micro frontends and modular frontend projects",
-	"type": "module",
-	"author": "zerosum studio <hello@zerosum.studio>",
 	"license": "MIT",
+	"author": "zerosum studio <hello@zerosum.studio>",
+	"type": "module",
 	"scripts": {
 		"build": "pnpm -r --filter \"./packages/*\" build",
 		"dev": "pnpm --filter @zerosumstudio/spool dev",
-		"spool": "pnpm --filter @zerosumstudio/spool exec spool",
-		"type-check": "pnpm -r --filter \"./packages/*\" type-check",
-		"test:run": "pnpm -r --filter \"./packages/*\" test:run",
-		"test:coverage": "pnpm -r --filter \"./packages/*\" test:coverage",
-		"lint": "eslint .",
-		"lint:fix": "eslint . --fix",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"clean": "pnpm -r exec rimraf dist",
-		"verify": "pnpm run type-check && pnpm run lint && pnpm run format:check && pnpm run test:coverage && pnpm run build",
-		"test": "pnpm -r --filter \"./packages/*\" test"
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"spool": "pnpm --filter @zerosumstudio/spool exec spool",
+		"test": "pnpm -r --filter \"./packages/*\" test",
+		"test:coverage": "pnpm -r --filter \"./packages/*\" test:coverage",
+		"test:run": "pnpm -r --filter \"./packages/*\" test:run",
+		"type-check": "pnpm -r --filter \"./packages/*\" type-check",
+		"verify": "pnpm run type-check && pnpm run lint && pnpm run format:check && pnpm run test:coverage && pnpm run build"
 	},
-	"engines": {
-		"node": ">=22.12.0"
-	},
-	"packageManager": "pnpm@11.6.0",
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"eslint": "^10.8.1",
 		"globals": "^17.9.0",
 		"prettier": "^3.9.6",
-		"rimraf": "^6.1.3",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.66.0"
+	},
+	"packageManager": "pnpm@11.6.0",
+	"engines": {
+		"node": ">=22.12.0"
 	}
 }

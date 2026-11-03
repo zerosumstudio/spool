@@ -194,7 +194,7 @@ export function appFiles(
 	appName: string,
 	app: AppConfig,
 	extras: TemplateExtras = NO_EXTRAS,
-	root: string = process.cwd()
+	root: string = process.cwd(),
 ): FileMap {
 	const isHost = app.type === 'host'
 	const refs = app.remotes.length ? remoteRefs(m, app) : []
@@ -236,7 +236,7 @@ export function appConfigFiles(appName: string, app: AppConfig, sentry = false):
 export function hostWiringFiles(
 	m: Manifest,
 	host: AppConfig,
-	root: string = process.cwd()
+	root: string = process.cwd(),
 ): FileMap {
 	const files: FileMap = {}
 	if (host.type !== 'host' && !host.remotes.length) return files
@@ -267,7 +267,7 @@ function appPackageJson(
 	m: Manifest,
 	appName: string,
 	app: AppConfig,
-	extras: TemplateExtras
+	extras: TemplateExtras,
 ): string {
 	const { dependencies, devDependencies } = appDependencies(m, app)
 
