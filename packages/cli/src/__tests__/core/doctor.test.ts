@@ -141,14 +141,16 @@ describe('diagnose', () => {
 
 	it('warns when an app is missing a non-framework shared dep', () => {
 		const ws = withFolders({ shell: host({ remotes: ['dashboard'] }), dashboard: remote() })
-		ws.manifest.shared = ['react', 'react-dom', '@bkincz/clutch']
+		ws.manifest.shared = ['react', 'react-dom', '@zerosumstudio/clutch']
 		appPackageJson('apps/shell', {
 			react: '^19.2.0',
 			'react-dom': '^19.2.0',
-			'@bkincz/clutch': '^3.0.0',
+			'@zerosumstudio/clutch': '^3.0.0',
 		})
 		appPackageJson('apps/dashboard', { react: '^19.2.0', 'react-dom': '^19.2.0' })
-		const issue = diagnose(ws).find(i => i.message.includes('"@bkincz/clutch" is not in'))
+		const issue = diagnose(ws).find(i =>
+			i.message.includes('"@zerosumstudio/clutch" is not in')
+		)
 		expect(issue).toMatchObject({ level: 'warn', app: 'dashboard' })
 	})
 
@@ -174,8 +176,8 @@ describe('diagnose', () => {
 
 	it('checks subpath share entries against their package, not the subpath', () => {
 		const ws = withFolders({ dashboard: remote() })
-		ws.manifest.shared = ['react', '@bkincz/clutch', '@bkincz/clutch/react']
-		appPackageJson('apps/dashboard', { react: '^18.3.1', '@bkincz/clutch': '^3.0.0' })
+		ws.manifest.shared = ['react', '@zerosumstudio/clutch', '@zerosumstudio/clutch/react']
+		appPackageJson('apps/dashboard', { react: '^18.3.1', '@zerosumstudio/clutch': '^3.0.0' })
 		const issues = diagnose(ws).filter(i => i.message.includes('Shared dep'))
 		expect(issues).toEqual([])
 	})

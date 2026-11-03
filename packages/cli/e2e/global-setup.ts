@@ -185,7 +185,7 @@ async function scaffold(root: string): Promise<string> {
 	})
 	// This checkout's CLI, not whatever version is on the registry.
 	editJson<FixturePackage>(join(dir, 'package.json'), pkg => {
-		pkg.devDependencies['@bkincz/spool'] = `link:${CLI_PACKAGE.replaceAll('\\', '/')}`
+		pkg.devDependencies['@zerosumstudio/spool'] = `link:${CLI_PACKAGE.replaceAll('\\', '/')}`
 	})
 	// The generated range takes the newest plugin, whose runtime is not the one
 	// spool pins. 1.17.1 is the release built on that runtime.

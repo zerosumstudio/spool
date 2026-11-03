@@ -96,7 +96,7 @@ export const COMMON_DEV_DEPS: ToolchainDep[] = [
 ]
 
 export const SHARED_EXTRAS: Record<string, string> = {
-	'@bkincz/clutch': '^3.5.0',
+	'@zerosumstudio/clutch': '^3.5.0',
 }
 
 export const SENTRY_SDK: Record<Framework, string> = {
@@ -142,7 +142,7 @@ export function rootDevDependencies(m: Manifest): Record<string, string> {
 	const deps: Record<string, string> = {
 		typescript: TOOLCHAIN.typescript,
 		'@types/node': TOOLCHAIN['@types/node'],
-		'@bkincz/spool': `^${CLI_VERSION}`,
+		'@zerosumstudio/spool': `^${CLI_VERSION}`,
 	}
 
 	if (m.addons.includes('turbo')) deps.turbo = TURBO_VERSION

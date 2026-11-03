@@ -98,7 +98,7 @@ function hostApp(appName: string, refs: RemoteRef[], extras: TemplateExtras): st
 	const mountRefs = refs.filter(r => r.contract === 'mount')
 
 	const stateImports = extras.stateExample
-		? `import { useMachine } from "@bkincz/clutch/react";\nimport { counterMachine } from "${STATE_STORE_IMPORT}";\n`
+		? `import { useMachine } from "@zerosumstudio/clutch/react";\nimport { counterMachine } from "${STATE_STORE_IMPORT}";\n`
 		: ''
 	const stateHook = extras.stateExample ? `  const { state } = useMachine(counterMachine);\n` : ''
 	const stateLine = extras.stateExample
@@ -165,7 +165,7 @@ export default function App() {
 		? `<Button onClick={increment}>Increment</Button>`
 		: `<button onClick={increment}>Increment</button>`
 
-	return `import { useMachine } from "@bkincz/clutch/react";
+	return `import { useMachine } from "@zerosumstudio/clutch/react";
 import { counterMachine } from "${STATE_STORE_IMPORT}";${buttonImport}
 
 import styles from "./app.module.css";

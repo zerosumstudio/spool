@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Published as `@zerosumstudio/spool`.** The repo moved to
+  [zerosumstudio/spool](https://github.com/zerosumstudio/spool). New workspaces
+  depend on `@zerosumstudio/spool`, and the shared state addon uses
+  `@zerosumstudio/clutch`. Existing workspaces keep working on the old names, and
+  the README has the swap steps.
+- The npm package now ships its README.
+
 ## 4.0.0
 
 ### Breaking

@@ -42,8 +42,11 @@ jobs:
             - name: Verify
               run: pnpm run verify
 
+            - name: Copy README and LICENSE into the package
+              run: cp README.md LICENSE packages/cli/
+
             - name: Publish to npm
-              run: pnpm --filter @bkincz/spool publish --provenance --access public --no-git-checks --ignore-scripts
+              run: pnpm --filter @zerosumstudio/spool publish --provenance --access public --no-git-checks --ignore-scripts
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

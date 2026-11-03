@@ -64,12 +64,12 @@ describe('addon', () => {
 		await addon(['state'], { install: false })
 
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared).toContain('@bkincz/clutch')
-		expect(manifest.shared).toContain('@bkincz/clutch/react')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch/react')
 
 		for (const app of ['shell', 'dashboard']) {
 			const pkg = JSON.parse(read(`apps/${app}/package.json`))
-			expect(pkg.dependencies['@bkincz/clutch']).toBeDefined()
+			expect(pkg.dependencies['@zerosumstudio/clutch']).toBeDefined()
 			const counter = read(`apps/${app}/src/state/counter.ts`)
 			expect(counter).toContain("'acme:counter'")
 			expect(counter).toContain('validate<CounterState>')
@@ -87,7 +87,7 @@ describe('addon', () => {
 
 		expect(read('pnpm-workspace.yaml')).toBe(before)
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared.filter((d: string) => d === '@bkincz/clutch')).toHaveLength(1)
+		expect(manifest.shared.filter((d: string) => d === '@zerosumstudio/clutch')).toHaveLength(1)
 	})
 
 	it('hides already-present addons from the prompt', async () => {

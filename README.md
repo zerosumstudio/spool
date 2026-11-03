@@ -4,15 +4,17 @@
 
 spool is a small CLI for building micro frontends. It scaffolds a monorepo of Module Federation apps on Vite, runs them together with one command, and keeps all the wiring in a single `spool.json`. Describe your apps once and spool handles the rest.
 
-**Live demo:** [spool-demo-shell.pages.dev](https://spool-demo-shell.pages.dev), a music UI where the browse view, search, and player bar are independently deployed remotes sharing one player state through [@bkincz/clutch](https://github.com/bkincz/clutch).
+**Live demo:** [spool-demo-shell.pages.dev](https://spool-demo-shell.pages.dev), a music UI where the browse view, search, and player bar are independently deployed remotes sharing one player state through [@zerosumstudio/clutch](https://github.com/zerosumstudio/clutch).
 
 ## Install
 
 ```bash
-npm install -g @bkincz/spool
+npm install -g @zerosumstudio/spool
 ```
 
 You'll need Node 22.13 or newer. Workspaces run on pnpm, npm, or yarn.
+
+Up to 4.0.0 this was published as `@bkincz/spool`. Run `npm uninstall -g @bkincz/spool` before installing the new name, since both provide the `spool` command. In an existing workspace, swap `@bkincz/spool` for `@zerosumstudio/spool` in the root `package.json`. If you use the shared state addon, swap `@bkincz/clutch` for `@zerosumstudio/clutch` in `spool.json`, each app's `package.json` and your imports, then reinstall. Spool leaves the old names alone, so nothing breaks if you wait.
 
 ## Quick start
 
@@ -200,7 +202,7 @@ Mix react, svelte, and vue freely. Every app picks its own framework. React remo
 - **ESLint**: one flat config at the root, type-checked, with the plugin each framework you use needs.
 - **Vitest**: a `vitest.config.ts` per app, separate from `vite.config.ts` because federation cannot run under a test. Any app with `remotes` gets them stubbed in `src/test`, regenerated when the remote list changes. `type-check` scripts come with or without this addon.
 - **Turborepo**: a `turbo.json` that puts `spool.json`, the runtime helper, and the `SPOOL_ENV` / `SPOOL_REMOTE_*` variables into the cache key, so a wiring change never gets a stale hit. `spool dev` and `spool build` are unchanged; turbo covers the tasks spool does not run.
-- **Shared state**: [@bkincz/clutch](https://github.com/bkincz/clutch) shared as a singleton, plus a store module in every app so they read and write one state instance per page. The store validates its shape on every change with a plain predicate, swap in a zod or valibot schema if you want one. Bump its `version` and add a `migrate` when the shape changes.
+- **Shared state**: [@zerosumstudio/clutch](https://github.com/zerosumstudio/clutch) shared as a singleton, plus a store module in every app so they read and write one state instance per page. The store validates its shape on every change with a plain predicate, swap in a zod or valibot schema if you want one. Bump its `version` and add a `migrate` when the shape changes.
 - **Sentry**: each app gets its framework SDK and a `src/sentry.ts` wired into its entry. Errors are tagged with the app whose chunk threw them, so a remote failing inside a host is filed under the remote. Set `VITE_SENTRY_DSN` per app; every app gets a `.env.example` naming it. With `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` in CI, `spool build` uploads hidden source maps, deletes them from `dist/`, and tags the release.
 - **Navigation**: one url every bundle on the page agrees on, in `src/navigation`. `navigate` and `useLocation` ride on `window.history`, so back and forward work across remotes and deep links resolve on load.
 - **Federation**: a `<Remote name="..." />` primitive and the remote registry, in `src/federation`. Mounts any remote by name, across frameworks. Every module a remote exposes gets a name, so `<Remote name="dashboard" />` is its app and `<Remote name="dashboard/Panel" />` is a widget it also offers. Those names also make up a generated `RemoteName` type, so a typo like `<Remote name="dashbaord" />` or `preloadRemote("serach")` won't compile.

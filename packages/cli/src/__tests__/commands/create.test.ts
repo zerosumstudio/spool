@@ -194,12 +194,12 @@ describe('create', () => {
 		})
 
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared).toContain('@bkincz/clutch')
-		expect(manifest.shared).toContain('@bkincz/clutch/react')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch/react')
 
 		for (const app of ['shell', 'dashboard', 'widget']) {
 			const pkg = JSON.parse(read(`apps/${app}/package.json`))
-			expect(pkg.dependencies['@bkincz/clutch']).toBeDefined()
+			expect(pkg.dependencies['@zerosumstudio/clutch']).toBeDefined()
 			expect(read(`apps/${app}/src/state/counter.ts`)).toContain("'acme:counter'")
 		}
 	})
@@ -215,8 +215,8 @@ describe('create', () => {
 		})
 
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared).toContain('@bkincz/clutch')
-		expect(manifest.shared).not.toContain('@bkincz/clutch/react')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch')
+		expect(manifest.shared).not.toContain('@zerosumstudio/clutch/react')
 	})
 
 	it('scaffolds the shared-counter example when state is picked at create', async () => {

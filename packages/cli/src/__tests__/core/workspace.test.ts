@@ -126,12 +126,12 @@ describe('saveManifest', () => {
 		writeFileSync(join(root, 'spool.json'), raw)
 
 		const ws = await requireWorkspace(root)
-		ws.manifest.shared.push('@bkincz/clutch')
+		ws.manifest.shared.push('@zerosumstudio/clutch')
 		await saveManifest(ws)
 
 		const parsed = JSON.parse(readFileSync(join(root, 'spool.json'), 'utf8')) as {
 			shared: string[]
 		}
-		expect(parsed.shared).toEqual(['react', 'react-dom', '@bkincz/clutch'])
+		expect(parsed.shared).toEqual(['react', 'react-dom', '@zerosumstudio/clutch'])
 	})
 })

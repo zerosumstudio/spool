@@ -1,5 +1,5 @@
 {
-	"name": "@bkincz/spool",
+	"name": "@zerosumstudio/spool",
 	"version": "4.0.0",
 	"description": "spool CLI: create, configure and maintain micro frontends",
 	"type": "module",
@@ -14,16 +14,16 @@
 		"scaffolding",
 		"monorepo"
 	],
-	"author": "Benjamin Kinczel <beni.kinczel@gmail.com>",
+	"author": "zerosum studio <hello@zerosum.studio>",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/bkincz/spool.git"
+		"url": "https://github.com/zerosumstudio/spool.git"
 	},
 	"bugs": {
-		"url": "https://github.com/bkincz/spool/issues"
+		"url": "https://github.com/zerosumstudio/spool/issues"
 	},
-	"homepage": "https://github.com/bkincz/spool#readme",
+	"homepage": "https://github.com/zerosumstudio/spool#readme",
 	"bin": {
 		"spool": "./dist/index.js"
 	},

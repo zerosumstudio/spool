@@ -126,7 +126,7 @@ jobs:
               shell: bash
               working-directory: ${{ runner.temp }}/smoke
               run: |
-                  node -e 'const fs=require("fs");const pkg=JSON.parse(fs.readFileSync("package.json","utf8"));pkg.devDependencies["@bkincz/spool"]="file:"+process.env.GITHUB_WORKSPACE.replaceAll("\\","/")+"/packages/cli";fs.writeFileSync("package.json",JSON.stringify(pkg,null,"\t")+"\n");'
+                  node -e 'const fs=require("fs");const pkg=JSON.parse(fs.readFileSync("package.json","utf8"));pkg.devDependencies["@zerosumstudio/spool"]="file:"+process.env.GITHUB_WORKSPACE.replaceAll("\\","/")+"/packages/cli";fs.writeFileSync("package.json",JSON.stringify(pkg,null,"\t")+"\n");'
 
             - name: Install workspace dependencies
               shell: bash
@@ -180,10 +180,10 @@ jobs:
               run: pnpm install --frozen-lockfile
 
             - name: Install browsers
-              run: pnpm --filter @bkincz/spool exec playwright install --with-deps chromium firefox webkit
+              run: pnpm --filter @zerosumstudio/spool exec playwright install --with-deps chromium firefox webkit
 
             - name: Retry and preload in real browsers
-              run: pnpm --filter @bkincz/spool test:e2e
+              run: pnpm --filter @zerosumstudio/spool test:e2e
               env:
                   SPOOL_E2E_MF_VITE: ${{ matrix.mf-vite }}
 

@@ -17,7 +17,7 @@ export interface EjectOptions {
 	yes?: boolean
 }
 
-const SPOOL_DEP = '@bkincz/spool'
+const SPOOL_DEP = '@zerosumstudio/spool'
 /** Scripts spool.json's own scaffold writes; only these get touched. */
 const REPLACED_SCRIPTS = ['dev', 'build'] as const
 const REMOVED_SCRIPTS = ['preview', 'doctor'] as const

@@ -163,13 +163,13 @@ export const ADDONS: Record<AddonName, Addon> = {
 	},
 	state: {
 		label: 'Shared state',
-		hint: 'a state machine every app shares as a federation singleton (@bkincz/clutch)',
+		hint: 'a state machine every app shares as a federation singleton (@zerosumstudio/clutch)',
 		unavailable: () => undefined,
-		present: (_root, m) => m.shared.includes('@bkincz/clutch'),
+		present: (_root, m) => m.shared.includes('@zerosumstudio/clutch'),
 		apply: m => {
-			const entries = ['@bkincz/clutch']
+			const entries = ['@zerosumstudio/clutch']
 			if (Object.values(m.apps).some(app => app.framework === 'react')) {
-				entries.push('@bkincz/clutch/react')
+				entries.push('@zerosumstudio/clutch/react')
 			}
 			for (const entry of entries) {
 				if (!m.shared.includes(entry)) m.shared.push(entry)
@@ -180,7 +180,7 @@ export const ADDONS: Record<AddonName, Addon> = {
 		notes: m => [
 			`state: every app got src/state/counter.ts; all copies resolve to one machine per page${
 				Object.values(m.apps).some(app => app.framework === 'react')
-					? ' (react apps: useMachine from "@bkincz/clutch/react")'
+					? ' (react apps: useMachine from "@zerosumstudio/clutch/react")'
 					: ''
 			}`,
 		],

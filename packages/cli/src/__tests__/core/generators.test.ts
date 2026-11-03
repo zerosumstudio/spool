@@ -96,7 +96,7 @@ describe('workspaceFiles', () => {
 
 	it('carries spool as a dev dependency so fresh clones can run the scripts', () => {
 		const pkg = JSON.parse(files['package.json']!)
-		expect(pkg.devDependencies['@bkincz/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
+		expect(pkg.devDependencies['@zerosumstudio/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
 		expect(pkg.scripts).toMatchObject({ dev: 'spool dev', build: 'spool build' })
 	})
 
