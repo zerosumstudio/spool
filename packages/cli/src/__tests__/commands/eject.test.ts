@@ -45,7 +45,7 @@ describe('eject', () => {
 		await eject({ yes: true })
 
 		const pkg = readJson('package.json')
-		expect(pkg.devDependencies['@bkincz/spool']).toBeUndefined()
+		expect(pkg.devDependencies['@zerosumstudio/spool']).toBeUndefined()
 		expect(pkg.scripts.dev).not.toContain('spool')
 		expect(pkg.scripts.build).not.toContain('spool')
 		expect(pkg.scripts.dev).toContain('pnpm')
@@ -84,7 +84,7 @@ describe('eject', () => {
 		await eject({})
 
 		const pkg = readJson('package.json')
-		expect(pkg.devDependencies['@bkincz/spool']).toBeUndefined()
+		expect(pkg.devDependencies['@zerosumstudio/spool']).toBeUndefined()
 		expect(existsSync(join(dir, '.spool'))).toBe(false)
 	})
 
@@ -94,7 +94,7 @@ describe('eject', () => {
 			JSON.stringify({
 				...readJson('package.json'),
 				scripts: { ...readJson('package.json').scripts, dev: 'turbo run dev' },
-			})
+			}),
 		)
 
 		await eject({ yes: true })

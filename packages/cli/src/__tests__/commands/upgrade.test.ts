@@ -116,7 +116,7 @@ describe('upgrade', () => {
 		expect(pkg.devDependencies['@types/node']).toBeDefined()
 
 		// Older workspaces did not carry the cli; upgrade adds it back.
-		expect(pkg.devDependencies['@bkincz/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
+		expect(pkg.devDependencies['@zerosumstudio/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
 	})
 
 	it('leaves a customized vite config alone and says so', async () => {
@@ -260,7 +260,7 @@ describe('upgrade', () => {
 		await upgrade({})
 
 		expect(step).toHaveBeenCalledWith(
-			expect.stringContaining('left 1 dependency range(s) alone')
+			expect.stringContaining('left 1 dependency range(s) alone'),
 		)
 	})
 
@@ -284,7 +284,7 @@ describe('upgrade', () => {
 		await upgrade({ pin: true })
 
 		expect(readJson('apps/dashboard/package.json').dependencies.react).toBe(
-			'link:../../vendor/react'
+			'link:../../vendor/react',
 		)
 	})
 
@@ -333,7 +333,7 @@ describe('upgrade', () => {
 
 		expect(record.files['spool.vite.ts']).toBe(hashContent(read('spool.vite.ts')))
 		expect(record.files['apps/shell/vite.config.ts']).toBe(
-			hashContent(read('apps/shell/vite.config.ts'))
+			hashContent(read('apps/shell/vite.config.ts')),
 		)
 	})
 
@@ -467,5 +467,50 @@ describe('upgrade', () => {
 		rmSync(join(dir, 'apps/dashboard'), { recursive: true })
 		await upgrade({})
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining('dashboard'))
+	})
+})
+
+describe('upgrade: navigation addon', () => {
+	const HISTORY = 'apps/shell/src/navigation/history.ts'
+	// matchRoute before it kept the type of the names in a route table.
+	const olderHistory = () =>
+		read(HISTORY).replace('matchRoute<Name extends string>(', 'matchRoute(')
+
+	beforeEach(async () => {
+		process.chdir(cwd)
+		removeDir(dir)
+		dir = freshDir('spool-upgrade-nav-')
+		await create(dir, {
+			name: 'acme',
+			pm: 'pnpm',
+			host: 'shell',
+			remotes: 'dashboard',
+			addons: 'federation,navigation',
+			install: false,
+		})
+		process.chdir(dir)
+	})
+
+	it('refreshes the navigation files an older spool wrote', async () => {
+		const older = olderHistory()
+		writeFileSync(join(dir, HISTORY), older)
+		const record = readJson(PROVENANCE_FILE)
+		record.files[HISTORY] = hashContent(older)
+		writeFileSync(join(dir, PROVENANCE_FILE), JSON.stringify(record))
+
+		await upgrade({})
+
+		expect(read(HISTORY)).toContain('matchRoute<Name extends string>(')
+	})
+
+	it('leaves an edited navigation file alone', async () => {
+		vi.spyOn(log, 'warn').mockImplementation(() => {})
+		const edited = `${olderHistory()}// mine
+`
+		writeFileSync(join(dir, HISTORY), edited)
+
+		await upgrade({})
+
+		expect(read(HISTORY)).toBe(edited)
 	})
 })

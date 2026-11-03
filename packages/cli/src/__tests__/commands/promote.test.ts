@@ -28,7 +28,7 @@ describe('promote', () => {
 			expect.objectContaining({ root: '/ws' }),
 			'production',
 			'dashboard',
-			'abc1234'
+			'abc1234',
 		)
 	})
 

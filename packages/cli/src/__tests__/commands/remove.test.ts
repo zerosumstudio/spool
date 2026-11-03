@@ -182,7 +182,7 @@ describe('remove: a remote consuming another remote', () => {
 	it('regenerates the consumer’s registry instead of leaving a stale one', async () => {
 		const before = readFileSync(
 			join(chainDir, 'apps/dashboard/src/federation/remotes.ts'),
-			'utf8'
+			'utf8',
 		)
 		expect(before).toContain('widget')
 
@@ -190,7 +190,7 @@ describe('remove: a remote consuming another remote', () => {
 
 		const after = readFileSync(
 			join(chainDir, 'apps/dashboard/src/federation/remotes.ts'),
-			'utf8'
+			'utf8',
 		)
 		expect(after).not.toContain('widget')
 	})

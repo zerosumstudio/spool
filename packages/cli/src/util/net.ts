@@ -39,7 +39,7 @@ export interface WaitForManifestOptions {
  */
 export async function waitForManifest(
 	url: string,
-	{ timeoutMs = 20_000, intervalMs = 200, signal }: WaitForManifestOptions = {}
+	{ timeoutMs = 20_000, intervalMs = 200, signal }: WaitForManifestOptions = {},
 ): Promise<void> {
 	const deadline = Date.now() + timeoutMs
 	while (Date.now() < deadline) {

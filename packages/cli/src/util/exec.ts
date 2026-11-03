@@ -53,8 +53,8 @@ export function run(cmd: string, args: string[], opts: SpawnOptions = {}): Promi
 			const detail = stderr.trim()
 			reject(
 				new Error(
-					`"${cmd}" exited with code ${code ?? 'null'}.${detail ? `\n${detail}` : ''}`
-				)
+					`"${cmd}" exited with code ${code ?? 'null'}.${detail ? `\n${detail}` : ''}`,
+				),
 			)
 		})
 	})
@@ -69,7 +69,7 @@ export interface CapturedRun {
 export function runCaptured(
 	cmd: string,
 	args: string[],
-	opts: SpawnOptions = {}
+	opts: SpawnOptions = {},
 ): Promise<CapturedRun> {
 	return new Promise(resolve => {
 		const child = spawn(cmd, args, { ...opts, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -104,7 +104,7 @@ export function runShell(command: string, opts: SpawnOptions = {}): Promise<void
 		if (!useBash && !warnedAboutShell) {
 			warnedAboutShell = true
 			log.warn(
-				'bash was not found, so this command runs under the platform shell. Quoting, `&&` and env-var syntax may not match CI, which always runs under bash.'
+				'bash was not found, so this command runs under the platform shell. Quoting, `&&` and env-var syntax may not match CI, which always runs under bash.',
 			)
 		}
 

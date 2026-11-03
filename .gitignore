@@ -2,10 +2,17 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
-.DS_Store
+*.tgz
 *.log
-.spool/
+.DS_Store
+.env
+.env.*
+!.env.example
 
-# Copied from the repo root at publish time (prepublishOnly)
+.spool/
+test-results/
+playwright-report/
+
+# Copied from the repo root by the release workflow and prepublishOnly
 packages/cli/README.md
 packages/cli/LICENSE

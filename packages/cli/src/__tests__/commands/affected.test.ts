@@ -37,7 +37,7 @@ beforeEach(async () => {
 	mkdirSync(join(dir, 'packages/ui'), { recursive: true })
 	writeFileSync(
 		join(dir, 'packages/ui/package.json'),
-		JSON.stringify({ name: 'ui', version: '0.0.0' })
+		JSON.stringify({ name: 'ui', version: '0.0.0' }),
 	)
 
 	const shellPkgPath = join(dir, 'apps/shell/package.json')

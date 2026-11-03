@@ -32,7 +32,7 @@ async function exists(p: string): Promise<boolean> {
 export async function writeFiles(
 	baseDir: string,
 	files: FileMap,
-	opts: { force?: boolean; provenance?: Provenance } = {}
+	opts: { force?: boolean; provenance?: Provenance } = {},
 ): Promise<WriteResult> {
 	const results = await Promise.all(
 		Object.entries(files).map(async ([rel, content]): Promise<[string, boolean]> => {
@@ -44,7 +44,7 @@ export async function writeFiles(
 
 			opts.provenance?.record(baseDir, rel, content)
 			return [rel, true]
-		})
+		}),
 	)
 
 	return {
@@ -82,7 +82,7 @@ export class OwnedWriter {
 		protected readonly root: string,
 		protected readonly dryRun: boolean,
 		protected readonly provenance: Provenance | null,
-		protected readonly force: boolean | string[]
+		protected readonly force: boolean | string[],
 	) {}
 
 	protected get verb(): string {
@@ -115,7 +115,7 @@ export class OwnedWriter {
 		dir: string,
 		rel: string,
 		content: string,
-		label: string
+		label: string,
 	): Promise<void> {
 		const target = join(dir, rel)
 		if (existsSync(target)) {
@@ -135,7 +135,7 @@ export class OwnedWriter {
 		dir: string,
 		rel: string,
 		existing: string,
-		label: string
+		label: string,
 	): Promise<boolean> {
 		switch (this.provenance?.ownership(dir, rel, existing) ?? 'unknown') {
 			case 'ours':
@@ -159,7 +159,7 @@ export class OwnedWriter {
 					dir,
 					rel,
 					label,
-					existing.includes(GENERATED_MARKER) ? 'unverified' : 'untracked'
+					existing.includes(GENERATED_MARKER) ? 'unverified' : 'untracked',
 				)
 		}
 	}
@@ -168,7 +168,7 @@ export class OwnedWriter {
 		dir: string,
 		rel: string,
 		label: string,
-		reason: OverwriteReason
+		reason: OverwriteReason,
 	): Promise<boolean> {
 		if (this.forces(dir, rel)) return true
 
@@ -187,7 +187,7 @@ export class OwnedWriter {
 
 		if (!process.stdin.isTTY) {
 			log.warn(
-				`${label}: ${rel} ${REASONS[reason]}, leaving it alone. Rerun with --force to overwrite.`
+				`${label}: ${rel} ${REASONS[reason]}, leaving it alone. Rerun with --force to overwrite.`,
 			)
 
 			this.skipped++

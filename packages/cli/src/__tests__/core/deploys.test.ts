@@ -61,10 +61,10 @@ describe('readDeployStore / recordDeploy', () => {
 		recordDeploy(ws, 'production', 'shell', aRecord({ sha: 'shell-sha' }))
 
 		expect(deployHistory(readDeployStore(ws), 'staging', 'dashboard')[0]?.sha).toBe(
-			'staging-sha'
+			'staging-sha',
 		)
 		expect(deployHistory(readDeployStore(ws), 'production', 'dashboard')[0]?.sha).toBe(
-			'prod-sha'
+			'prod-sha',
 		)
 		expect(deployHistory(readDeployStore(ws), 'production', 'shell')[0]?.sha).toBe('shell-sha')
 	})
@@ -78,7 +78,7 @@ describe('readDeployStore / recordDeploy', () => {
 		}
 
 		expect(
-			deployHistory(readDeployStore(ws), 'production', 'dashboard').length
+			deployHistory(readDeployStore(ws), 'production', 'dashboard').length,
 		).toBeLessThanOrEqual(10)
 	})
 
@@ -100,7 +100,7 @@ describe('readBuiltSharedEntries', () => {
 			join(root, 'apps/dashboard/dist/mf-manifest.json'),
 			JSON.stringify({
 				shared: [{ name: 'react', version: '18.2.0', requiredVersion: '^18.0.0' }],
-			})
+			}),
 		)
 
 		expect(readBuiltSharedEntries(root, 'apps/dashboard')).toEqual([

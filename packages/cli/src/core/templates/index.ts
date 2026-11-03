@@ -22,8 +22,8 @@ export function remoteRefs(m: Manifest, host: AppConfig): RemoteRef[] {
 			name,
 			m.apps[name]?.framework ?? DEFAULT_FRAMEWORK,
 			exposeSourceMap(m.apps[name]),
-			m.apps[name]?.path
-		)
+			m.apps[name]?.path,
+		),
 	)
 }
 
@@ -31,7 +31,7 @@ export function remoteRef(
 	name: string,
 	framework: Framework,
 	exposeSources: Record<string, string> = { App: TEMPLATES[framework].exposeEntry },
-	path: string = `apps/${name}`
+	path: string = `apps/${name}`,
 ): RemoteRef {
 	return {
 		name,
@@ -46,7 +46,7 @@ export function remoteRef(
 /** Expose keys without their "./" prefix, mapped to their source path. A remote always offers App. */
 function exposeSourceMap(app: AppConfig | undefined): Record<string, string> {
 	const entries = Object.entries(app?.exposes ?? {}).map(
-		([key, source]) => [key.replace(/^[.][/]/, ''), source] as const
+		([key, source]) => [key.replace(/^[.][/]/, ''), source] as const,
 	)
 	return entries.length
 		? Object.fromEntries(entries)

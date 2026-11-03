@@ -1,8 +1,7 @@
 {
-	"name": "@bkincz/spool",
-	"version": "3.1.0",
-	"description": "spool CLI: create, configure and maintain micro frontends",
-	"type": "module",
+	"name": "@zerosumstudio/spool",
+	"version": "4.0.0",
+	"description": "spool is a small CLI for building micro frontends",
 	"keywords": [
 		"micro-frontends",
 		"module-federation",
@@ -14,16 +13,17 @@
 		"scaffolding",
 		"monorepo"
 	],
-	"author": "Benjamin Kinczel <beni.kinczel@gmail.com>",
-	"license": "MIT",
+	"homepage": "https://github.com/zerosumstudio/spool#readme",
+	"bugs": {
+		"url": "https://github.com/zerosumstudio/spool/issues"
+	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/bkincz/spool.git"
+		"url": "https://github.com/zerosumstudio/spool.git"
 	},
-	"bugs": {
-		"url": "https://github.com/bkincz/spool/issues"
-	},
-	"homepage": "https://github.com/bkincz/spool#readme",
+	"license": "MIT",
+	"author": "zerosum studio <hello@zerosum.studio>",
+	"type": "module",
 	"bin": {
 		"spool": "./dist/index.js"
 	},
@@ -32,22 +32,22 @@
 		"README.md",
 		"LICENSE"
 	],
-	"publishConfig": {
-		"access": "public"
-	},
 	"scripts": {
-		"prepublishOnly": "node -e \"const f=require('fs');f.copyFileSync('../../README.md','README.md');f.copyFileSync('../../LICENSE','LICENSE')\" && pnpm run build && pnpm run type-check && pnpm run test:run",
 		"build": "tsup",
 		"dev": "tsup --watch",
-		"type-check": "tsc --noEmit",
+		"format": "prettier --write . --ignore-path ../../.gitignore --ignore-path ../../.prettierignore",
+		"format:check": "prettier --check . --ignore-path ../../.gitignore --ignore-path ../../.prettierignore",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"prepublishOnly": "node -e \"const f=require('fs');f.copyFileSync('../../README.md','README.md');f.copyFileSync('../../LICENSE','LICENSE')\" && pnpm run verify",
 		"start": "node ./dist/index.js",
 		"test": "vitest",
-		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
-		"test:integration": "pnpm run build && vitest run --config vitest.integration.config.ts"
-	},
-	"engines": {
-		"node": ">=22.12.0"
+		"test:e2e": "pnpm run build && playwright test -c e2e/playwright.config.ts",
+		"test:integration": "pnpm run build && vitest run --config vitest.integration.config.ts",
+		"test:run": "vitest run",
+		"type-check": "tsc --noEmit && tsc --noEmit -p e2e",
+		"verify": "pnpm run type-check && pnpm run lint && pnpm run format:check && pnpm run test:coverage && pnpm run build"
 	},
 	"dependencies": {
 		"@clack/prompts": "^1.7.0",
@@ -58,6 +58,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.64.1",
 		"@types/cross-spawn": "^6.0.6",
 		"@types/node": "^26.2.0",
 		"@vitest/coverage-v8": "^4.1.10",
@@ -66,5 +67,12 @@
 		"tsup": "^8.5.1",
 		"typescript": "^7.0.2",
 		"vitest": "^4.1.10"
+	},
+	"engines": {
+		"node": ">=22.12.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
 	}
 }

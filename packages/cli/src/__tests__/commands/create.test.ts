@@ -125,13 +125,13 @@ describe('create', () => {
 				host: 'shell:angular',
 				remotes: '',
 				install: false,
-			})
+			}),
 		).rejects.toThrow('Unknown framework')
 	})
 
 	it('rejects a host spec with too many colon segments', async () => {
 		await expect(
-			create(dir, { name: 'acme', pm: 'pnpm', host: 'a:b:c', remotes: '', install: false })
+			create(dir, { name: 'acme', pm: 'pnpm', host: 'a:b:c', remotes: '', install: false }),
 		).rejects.toThrow('Use "name" or "name:framework"')
 	})
 
@@ -146,7 +146,7 @@ describe('create', () => {
 		})
 
 		expect(
-			JSON.parse(read('packages/ui/package.json')).devDependencies['@ladle/react']
+			JSON.parse(read('packages/ui/package.json')).devDependencies['@ladle/react'],
 		).toBeDefined()
 		expect(existsSync(join(dir, 'packages/ui/src/Button.stories.tsx'))).toBe(true)
 
@@ -194,12 +194,12 @@ describe('create', () => {
 		})
 
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared).toContain('@bkincz/clutch')
-		expect(manifest.shared).toContain('@bkincz/clutch/react')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch/react')
 
 		for (const app of ['shell', 'dashboard', 'widget']) {
 			const pkg = JSON.parse(read(`apps/${app}/package.json`))
-			expect(pkg.dependencies['@bkincz/clutch']).toBeDefined()
+			expect(pkg.dependencies['@zerosumstudio/clutch']).toBeDefined()
 			expect(read(`apps/${app}/src/state/counter.ts`)).toContain("'acme:counter'")
 		}
 	})
@@ -215,8 +215,8 @@ describe('create', () => {
 		})
 
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared).toContain('@bkincz/clutch')
-		expect(manifest.shared).not.toContain('@bkincz/clutch/react')
+		expect(manifest.shared).toContain('@zerosumstudio/clutch')
+		expect(manifest.shared).not.toContain('@zerosumstudio/clutch/react')
 	})
 
 	it('scaffolds the shared-counter example when state is picked at create', async () => {
@@ -263,7 +263,7 @@ describe('create', () => {
 				remotes: '',
 				addons: 'storybook',
 				install: false,
-			})
+			}),
 		).rejects.toThrow('Unknown addon')
 	})
 
@@ -276,7 +276,7 @@ describe('create', () => {
 				remotes: '',
 				addons: 'ladle',
 				install: false,
-			})
+			}),
 		).rejects.toThrow('react-based')
 	})
 
@@ -303,7 +303,7 @@ describe('create', () => {
 
 	it('rejects an unknown package manager', async () => {
 		await expect(
-			create(dir, { name: 'acme', pm: 'bun', host: 'shell', remotes: '', install: false })
+			create(dir, { name: 'acme', pm: 'bun', host: 'shell', remotes: '', install: false }),
 		).rejects.toThrow('Unknown package manager')
 	})
 
@@ -320,7 +320,7 @@ describe('create', () => {
 				host: 'shell',
 				remotes: '',
 				install: false,
-			})
+			}),
 		).rejects.toThrow('Invalid workspace name')
 	})
 
@@ -332,14 +332,14 @@ describe('create', () => {
 				host: 'shell',
 				remotes: 'shell',
 				install: false,
-			})
+			}),
 		).rejects.toThrow('unique')
 	})
 
 	it('refuses to overwrite an existing workspace', async () => {
 		await create(dir, { name: 'acme', pm: 'pnpm', host: 'shell', remotes: '', install: false })
 		await expect(
-			create(dir, { name: 'acme', pm: 'pnpm', host: 'shell', remotes: '', install: false })
+			create(dir, { name: 'acme', pm: 'pnpm', host: 'shell', remotes: '', install: false }),
 		).rejects.toThrow('already a spool workspace')
 	})
 
@@ -350,7 +350,7 @@ describe('create', () => {
 				host: 'shell',
 				remotes: '',
 				install: false,
-			})
+			}),
 		).rejects.toThrow('pass --name')
 	})
 })

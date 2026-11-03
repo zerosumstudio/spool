@@ -96,7 +96,7 @@ export const COMMON_DEV_DEPS: ToolchainDep[] = [
 ]
 
 export const SHARED_EXTRAS: Record<string, string> = {
-	'@bkincz/clutch': '^3.5.0',
+	'@zerosumstudio/clutch': '^3.5.0',
 }
 
 export const SENTRY_SDK: Record<Framework, string> = {
@@ -142,7 +142,7 @@ export function rootDevDependencies(m: Manifest): Record<string, string> {
 	const deps: Record<string, string> = {
 		typescript: TOOLCHAIN.typescript,
 		'@types/node': TOOLCHAIN['@types/node'],
-		'@bkincz/spool': `^${CLI_VERSION}`,
+		'@zerosumstudio/spool': `^${CLI_VERSION}`,
 	}
 
 	if (m.addons.includes('turbo')) deps.turbo = TURBO_VERSION
@@ -159,7 +159,7 @@ export function rootDevDependencies(m: Manifest): Record<string, string> {
 
 export function appDependencies(
 	m: Manifest,
-	app: AppConfig
+	app: AppConfig,
 ): { dependencies: Record<string, string>; devDependencies: Record<string, string> } {
 	const dependencies: Record<string, string> = {}
 	const devDependencies: Record<string, string> = {}
@@ -173,7 +173,7 @@ export function appDependencies(
 		const foreign = new Set<Framework>(
 			app.remotes
 				.map(name => m.apps[name]?.framework ?? DEFAULT_FRAMEWORK)
-				.filter(framework => framework !== app.framework)
+				.filter(framework => framework !== app.framework),
 		)
 		for (const framework of foreign) {
 			put(FRAMEWORK_DEPS[framework].bridgeDependencies, dependencies)

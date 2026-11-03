@@ -37,7 +37,7 @@ describe('typesOutDir / exposeDeclarationPath', () => {
 
 	it('mirrors the expose source under outDir, swapping the extension for .d.ts', () => {
 		expect(
-			exposeDeclarationPath('/ws', 'dashboard', 'apps/dashboard', './src/app/app.tsx')
+			exposeDeclarationPath('/ws', 'dashboard', 'apps/dashboard', './src/app/app.tsx'),
 		).toBe(
 			join(
 				'/ws',
@@ -48,8 +48,8 @@ describe('typesOutDir / exposeDeclarationPath', () => {
 				'dashboard',
 				'src',
 				'app',
-				'app.d.ts'
-			)
+				'app.d.ts',
+			),
 		)
 	})
 })

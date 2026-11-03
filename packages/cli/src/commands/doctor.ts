@@ -81,7 +81,7 @@ async function applyFixes(
 	ws: Workspace,
 	issues: Diagnostic[],
 	dryRun: boolean,
-	quiet: boolean
+	quiet: boolean,
 ): Promise<number> {
 	const shares = new Set<string>()
 	const byApp = new Map<string, DepWrite[]>()
@@ -132,7 +132,7 @@ async function applyFixes(
 
 				return done
 			},
-			{ write: !dryRun, root: ws.root }
+			{ write: !dryRun, root: ws.root },
 		)
 		if (changes.length) {
 			step(`${name}: ${verb} package.json (${changes.join(', ')})`)

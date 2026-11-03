@@ -73,7 +73,7 @@ function selectApps(ws: Workspace, only?: string[]): NamedApp[] {
 	const unknown = only.filter(name => !known.has(name))
 	if (unknown.length) {
 		throw new CliError(
-			`Unknown app(s) in --only: ${unknown.join(', ')}. Check the names in spool.json.`
+			`Unknown app(s) in --only: ${unknown.join(', ')}. Check the names in spool.json.`,
 		)
 	}
 	return all.filter(a => only.includes(a.name))
@@ -94,7 +94,7 @@ function warnExcludedRemotes(selected: NamedApp[]): void {
 		const missing = missingRemotes(app, names)
 		if (missing.length) {
 			log.warn(
-				`${name} expects remote(s) ${missing.join(', ')} that are not selected. Start them separately, or use \`spool dev --rest\`.`
+				`${name} expects remote(s) ${missing.join(', ')} that are not selected. Start them separately, or use \`spool dev --rest\`.`,
 			)
 		}
 	}
@@ -137,18 +137,18 @@ interface RestResolution {
 function resolveRest(
 	ws: Workspace,
 	excluded: NamedApp[],
-	rest: RestSpec | undefined
+	rest: RestSpec | undefined,
 ): RestResolution {
 	if (!rest || !excluded.length) return { builtRemotes: [], envVars: {} }
 
 	if (rest.kind === 'built') {
 		const missingDist = excluded.filter(
-			({ app }) => !existsSync(join(ws.root, app.path, 'dist'))
+			({ app }) => !existsSync(join(ws.root, app.path, 'dist')),
 		)
 		if (missingDist.length) {
 			const names = missingDist.map(a => a.name).join(',')
 			throw new CliError(
-				`--rest built needs a dist folder for ${missingDist.map(a => a.name).join(', ')}. Run \`spool build --only ${names}\` first.`
+				`--rest built needs a dist folder for ${missingDist.map(a => a.name).join(', ')}. Run \`spool build --only ${names}\` first.`,
 			)
 		}
 		return { builtRemotes: excluded, envVars: {} }
@@ -168,7 +168,7 @@ function resolveRest(
 
 	if (unresolved.length) {
 		throw new CliError(
-			`--rest ${rest.env} needs a "urls.${rest.env}" or "url" for ${unresolved.join(', ')} in spool.json.`
+			`--rest ${rest.env} needs a "urls.${rest.env}" or "url" for ${unresolved.join(', ')} in spool.json.`,
 		)
 	}
 
@@ -214,7 +214,7 @@ async function serveAll(ws: Workspace, mode: ServeMode, opts: ServeOptions = {})
 
 	await Promise.race([
 		Promise.all(
-			remotes.map(remote => waitForRemote(remote, timeoutSeconds, controller.signal))
+			remotes.map(remote => waitForRemote(remote, timeoutSeconds, controller.signal)),
 		),
 		session.crashed,
 	])
@@ -265,7 +265,7 @@ class ServeSession {
 	constructor(
 		private readonly ws: Workspace,
 		private readonly mode: ServeMode,
-		private readonly output: DevOutput
+		private readonly output: DevOutput,
 	) {
 		this.crashed = new Promise<never>((_, reject) => {
 			this.reportCrash = reject
@@ -320,7 +320,7 @@ class ServeSession {
 				child.stderr?.destroy()
 
 				return ok
-			})
+			}),
 		)
 
 		return results.every(Boolean)
@@ -358,8 +358,8 @@ class ServeSession {
 				new CliError(
 					code === null
 						? `${name} was killed unexpectedly. Shutting down the others.`
-						: `${name} stopped unexpectedly (exit ${code}). Shutting down the others.`
-				)
+						: `${name} stopped unexpectedly (exit ${code}). Shutting down the others.`,
+				),
 			)
 		})
 	}
@@ -371,7 +371,7 @@ class ServeSession {
 			COLORS[colorIndex % COLORS.length]!,
 			this.output,
 			this.mode,
-			extraEnv
+			extraEnv,
 		)
 
 		child.on('error', err => this.handleSpawnFailure(named.name, err as NodeJS.ErrnoException))
@@ -408,7 +408,7 @@ class ServeSession {
 		const status = this.output.track(
 			info.name,
 			{ role: 'component workshop', port: info.port, order: 2, readyOnUrl: true },
-			COLORS[colorIndex % COLORS.length]!
+			COLORS[colorIndex % COLORS.length]!,
 		)
 
 		child.stdout?.on('data', (d: Buffer) => this.output.chunk(status, d, false))
@@ -419,7 +419,7 @@ class ServeSession {
 
 			this.output.drop(info.name)
 			log.warn(
-				`ladle failed to start (${err.code ?? err.message}). The app servers are still running.`
+				`ladle failed to start (${err.code ?? err.message}). The app servers are still running.`,
 			)
 		})
 
@@ -471,7 +471,7 @@ function requireDists(ws: Workspace, apps: NamedApp[]): void {
 	const missing = apps.filter(({ app }) => !existsSync(join(ws.root, app.path, 'dist')))
 	if (missing.length) {
 		throw new CliError(
-			`No dist folder for ${missing.map(a => a.name).join(', ')}. Run \`spool build\` first.`
+			`No dist folder for ${missing.map(a => a.name).join(', ')}. Run \`spool build\` first.`,
 		)
 	}
 }
@@ -480,7 +480,7 @@ function requireDists(ws: Workspace, apps: NamedApp[]): void {
 function warnStalePreview(ws: Workspace): void {
 	if (helperLacks(ws, 'cors')) {
 		log.warn(
-			`This workspace's ${HELPER_FILE} predates preview CORS support, so browsers may block hosts fetching remotes cross-origin. Run \`spool upgrade\`.`
+			`This workspace's ${HELPER_FILE} predates preview CORS support, so browsers may block hosts fetching remotes cross-origin. Run \`spool upgrade\`.`,
 		)
 	}
 }
@@ -489,7 +489,7 @@ function warnStalePreview(ws: Workspace): void {
 function warnStaleFsAllow(ws: Workspace): void {
 	if (ws.manifest.server?.fs && helperLacks(ws, 'fsAllow')) {
 		log.warn(
-			`This workspace's ${HELPER_FILE} predates server.fs.allow, so the dev server ignores it. Run \`spool upgrade\`.`
+			`This workspace's ${HELPER_FILE} predates server.fs.allow, so the dev server ignores it. Run \`spool upgrade\`.`,
 		)
 	}
 }
@@ -498,18 +498,18 @@ function warnStaleFsAllow(ws: Workspace): void {
 function warnDeployedUrls(apps: NamedApp[]): void {
 	if (!hostsOf(apps).length) return
 	const deployed = remotesOf(apps).filter(
-		({ app }) => app.url !== undefined || app.urls !== undefined
+		({ app }) => app.url !== undefined || app.urls !== undefined,
 	)
 	if (!deployed.length) return
 	log.warn(
-		`${deployed.map(a => a.name).join(', ')} carry a deployed url in spool.json, so hosts built with \`spool build\` load the deployed manifests instead of these local servers. Rebuild with SPOOL_REMOTE_<NAME>=http://localhost:<port>/mf-manifest.json to preview the local artifacts.`
+		`${deployed.map(a => a.name).join(', ')} carry a deployed url in spool.json, so hosts built with \`spool build\` load the deployed manifests instead of these local servers. Rebuild with SPOOL_REMOTE_<NAME>=http://localhost:<port>/mf-manifest.json to preview the local artifacts.`,
 	)
 }
 
 async function waitForRemote(
 	{ name, app }: NamedApp,
 	timeoutSeconds: number,
-	signal: AbortSignal
+	signal: AbortSignal,
 ): Promise<void> {
 	const url = `http://localhost:${app.port}/mf-manifest.json`
 	try {
@@ -518,7 +518,7 @@ async function waitForRemote(
 		// A sibling crash aborted the poll; that failure is reported elsewhere.
 		if (signal.aborted) return
 		log.warn(
-			`${name} is not serving its federation manifest on port ${app.port} yet. Hosts may need one reload.`
+			`${name} is not serving its federation manifest on port ${app.port} yet. Hosts may need one reload.`,
 		)
 	}
 }
@@ -529,7 +529,7 @@ function spawnApp(
 	color: (s: string) => string,
 	output: DevOutput,
 	mode: ServeMode,
-	extraEnv?: NodeJS.ProcessEnv
+	extraEnv?: NodeJS.ProcessEnv,
 ): ChildProcess {
 	const child = spawnProcess(ws.manifest.packageManager, ['run', mode], {
 		cwd: join(ws.root, app.path),
@@ -559,7 +559,7 @@ export async function buildAll(
 	only?: string[],
 	env?: string,
 	concurrency = defaultConcurrency(),
-	onResult?: (result: AppRunResult) => void
+	onResult?: (result: AppRunResult) => void,
 ): Promise<void> {
 	const apps = selectApps(ws, only)
 	if (env !== undefined) requireEnvSupport(ws, apps, env)
@@ -578,7 +578,7 @@ export async function buildAll(
 function verifySingletons(ws: Workspace, apps: NamedApp[]): void {
 	const conflicts = checkBuiltSingletons(
 		ws,
-		apps.map(({ name }) => name)
+		apps.map(({ name }) => name),
 	)
 
 	if (!conflicts.length) return
@@ -589,12 +589,12 @@ function verifySingletons(ws: Workspace, apps: NamedApp[]): void {
 			.join(', ')
 
 		log.error(
-			`"${conflict.dep}" shipped as ${describeShipped(conflict)}. Federation loads ${conflict.chosen}, which ${blocked}.`
+			`"${conflict.dep}" shipped as ${describeShipped(conflict)}. Federation loads ${conflict.chosen}, which ${blocked}.`,
 		)
 	}
 
 	throw new CliError(
-		`${conflicts.length} shared dep(s) resolved to versions the apps cannot agree on, so they would load more than one copy at runtime. Run \`spool doctor --fix\` to align them, reinstall, and build again.`
+		`${conflicts.length} shared dep(s) resolved to versions the apps cannot agree on, so they would load more than one copy at runtime. Run \`spool doctor --fix\` to align them, reinstall, and build again.`,
 	)
 }
 
@@ -609,7 +609,7 @@ async function buildTier(
 	spawnEnv: { env?: NodeJS.ProcessEnv },
 	env: string | undefined,
 	concurrency: number,
-	onResult?: (result: AppRunResult) => void
+	onResult?: (result: AppRunResult) => void,
 ): Promise<void> {
 	const queue = [...tier]
 	const failures: BuildFailure[] = []
@@ -626,7 +626,7 @@ async function buildTier(
 			const { code, output } = await runCaptured(
 				ws.manifest.packageManager,
 				['run', 'build'],
-				{ cwd: join(ws.root, app.path), ...spawnEnv }
+				{ cwd: join(ws.root, app.path), ...spawnEnv },
 			)
 			const duration = Date.now() - started
 
@@ -662,7 +662,7 @@ async function buildTier(
 	throw new CliError(
 		failures.length === 1
 			? `Build failed for ${names}. Run \`${reproduce}\` to reproduce it.`
-			: `Builds failed for ${names}.`
+			: `Builds failed for ${names}.`,
 	)
 }
 
@@ -670,12 +670,12 @@ async function buildTier(
 function requireEnvSupport(ws: Workspace, apps: NamedApp[], env: string): void {
 	if (helperLacks(ws, 'SPOOL_ENV')) {
 		throw new CliError(
-			`This workspace's ${HELPER_FILE} predates environments, so --env would be silently ignored. Run \`spool upgrade\` first.`
+			`This workspace's ${HELPER_FILE} predates environments, so --env would be silently ignored. Run \`spool upgrade\` first.`,
 		)
 	}
 	if (!remotesOf(apps).some(({ app }) => app.urls?.[env])) {
 		log.warn(
-			`No selected remote has a "urls.${env}" entry in spool.json, so every remote falls back to its "url" or localhost.`
+			`No selected remote has a "urls.${env}" entry in spool.json, so every remote falls back to its "url" or localhost.`,
 		)
 	}
 }
@@ -687,7 +687,7 @@ async function gitHeadSha(cwd: string): Promise<string> {
 	const { code, output } = await runCaptured('git', ['rev-parse', 'HEAD'], { cwd })
 	if (code !== 0) {
 		throw new CliError(
-			'Could not read the current git commit (`git rev-parse HEAD` failed). Deploy records need a git repository.'
+			'Could not read the current git commit (`git rev-parse HEAD` failed). Deploy records need a git repository.',
 		)
 	}
 	return output.trim()
@@ -699,7 +699,7 @@ function requireDeployableApp(ws: Workspace, name: string): AppConfig {
 	const app = ws.manifest.apps[name]
 	if (!app) {
 		throw new CliError(
-			`No app named "${name}" in this workspace. Check the names in spool.json.`
+			`No app named "${name}" in this workspace. Check the names in spool.json.`,
 		)
 	}
 	if (!app.deploy) {
@@ -712,7 +712,7 @@ async function ensureHeadMatches(ws: Workspace, sha: string): Promise<void> {
 	const head = await gitHeadSha(ws.root)
 	if (head.startsWith(sha)) return
 	throw new CliError(
-		`The working tree is at ${shortSha(head)}, not ${shortSha(sha)}. Check out that commit (and its build) before promoting or rolling back.`
+		`The working tree is at ${shortSha(head)}, not ${shortSha(sha)}. Check out that commit (and its build) before promoting or rolling back.`,
 	)
 }
 
@@ -721,7 +721,7 @@ async function runAppDeploy(
 	name: string,
 	app: AppConfig,
 	env: string,
-	spawnEnv: { env?: NodeJS.ProcessEnv }
+	spawnEnv: { env?: NodeJS.ProcessEnv },
 ): Promise<DeployRecord> {
 	const entries = readBuiltSharedEntries(ws.root, app.path)
 	const store = readDeployStore(ws)
@@ -731,11 +731,11 @@ async function runAppDeploy(
 		const details = conflicts
 			.map(
 				c =>
-					`"${c.dep}" needs ${c.requiredVersion}, but "${c.otherApp}" last shipped ${c.otherVersion} to "${env}"`
+					`"${c.dep}" needs ${c.requiredVersion}, but "${c.otherApp}" last shipped ${c.otherVersion} to "${env}"`,
 			)
 			.join('; ')
 		throw new CliError(
-			`${name} would ship a shared dep another app cannot load: ${details}. Align the versions and rebuild before deploying.`
+			`${name} would ship a shared dep another app cannot load: ${details}. Align the versions and rebuild before deploying.`,
 		)
 	}
 
@@ -754,7 +754,7 @@ export async function deployAll(
 	ws: Workspace,
 	only?: string[],
 	env?: string,
-	onResult?: (result: AppRunResult) => void
+	onResult?: (result: AppRunResult) => void,
 ): Promise<void> {
 	const apps = selectApps(ws, only)
 	const ordered = [...remotesOf(apps), ...hostsOf(apps)]
@@ -768,7 +768,7 @@ export async function deployAll(
 	}
 	if (!deployable.length) {
 		throw new CliError(
-			'Nothing to deploy. Give each app a "deploy" command in spool.json, e.g. "wrangler pages deploy dist".'
+			'Nothing to deploy. Give each app a "deploy" command in spool.json, e.g. "wrangler pages deploy dist".',
 		)
 	}
 
@@ -776,7 +776,7 @@ export async function deployAll(
 		const dir = join(ws.root, app.path)
 		if (!existsSync(join(dir, 'dist'))) {
 			log.warn(
-				`${name} has no dist folder. Run \`spool build\` first if its deploy expects one.`
+				`${name} has no dist folder. Run \`spool build\` first if its deploy expects one.`,
 			)
 		}
 		log.step(`deploying ${pc.bold(name)} (${app.type})${env ? pc.dim(` for ${env}`) : ''}`)
@@ -806,7 +806,7 @@ export async function deployAll(
 
 		if (app.type === 'remote' && !app.url) {
 			log.warn(
-				`${name} has no "url" in spool.json, so host production builds still point at localhost. Set it to the deployed mf-manifest.json.`
+				`${name} has no "url" in spool.json, so host production builds still point at localhost. Set it to the deployed mf-manifest.json.`,
 			)
 		}
 	}
@@ -817,7 +817,7 @@ export async function promoteApp(
 	ws: Workspace,
 	env: string,
 	name: string,
-	sha: string
+	sha: string,
 ): Promise<void> {
 	const app = requireDeployableApp(ws, name)
 	await ensureHeadMatches(ws, sha)

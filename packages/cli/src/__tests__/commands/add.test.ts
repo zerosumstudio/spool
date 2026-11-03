@@ -146,7 +146,7 @@ describe('add', () => {
 		expect(read('apps/widget/src/mount.ts')).toContain('mountApp')
 		expect(read('apps/widget/vite.config.ts')).toContain('@sveltejs/vite-plugin-svelte')
 		expect(read('apps/shell/src/remotes.d.ts')).toContain(
-			'const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void'
+			'const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void',
 		)
 	})
 
@@ -176,7 +176,7 @@ describe('add', () => {
 
 	it('rejects an unknown framework', async () => {
 		await expect(add('widget', { framework: 'angular', install: false })).rejects.toThrow(
-			'Unknown framework'
+			'Unknown framework',
 		)
 	})
 
@@ -236,7 +236,7 @@ describe('add', () => {
 
 	it('rejects an unknown type', async () => {
 		await expect(add('widgetapp', { type: 'widget', install: false })).rejects.toThrow(
-			'Unknown app type'
+			'Unknown app type',
 		)
 	})
 
@@ -246,13 +246,13 @@ describe('add', () => {
 
 	it('rejects a non-numeric port', async () => {
 		await expect(add('reports', { port: 'abc', install: false })).rejects.toThrow(
-			'Invalid port'
+			'Invalid port',
 		)
 	})
 
 	it('rejects a port already in use', async () => {
 		await expect(add('reports', { port: '5173', install: false })).rejects.toThrow(
-			'already used by'
+			'already used by',
 		)
 	})
 })

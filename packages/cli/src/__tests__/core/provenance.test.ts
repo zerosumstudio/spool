@@ -114,7 +114,7 @@ describe('rename', () => {
 	it('is a no-op when nothing is recorded at the old path', () => {
 		const provenance = Provenance.load(root)
 		expect(() =>
-			provenance.rename(root, 'src/shell/remote.tsx', 'src/federation/remote.tsx')
+			provenance.rename(root, 'src/shell/remote.tsx', 'src/federation/remote.tsx'),
 		).not.toThrow()
 		expect(provenance.tracks('src/federation/remote.tsx')).toBe(false)
 	})

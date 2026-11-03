@@ -23,13 +23,13 @@ describe('run', () => {
 
 	it('rejects with the exit code when the command fails', async () => {
 		await expect(run(process.execPath, ['-e', 'process.exit(2)'])).rejects.toThrow(
-			'exited with code 2'
+			'exited with code 2',
 		)
 	})
 
 	it('includes captured stderr in the rejection when the command fails', async () => {
 		await expect(
-			run(process.execPath, ['-e', 'process.stderr.write("boom"); process.exit(1)'])
+			run(process.execPath, ['-e', 'process.stderr.write("boom"); process.exit(1)']),
 		).rejects.toThrow('boom')
 	})
 
@@ -39,7 +39,7 @@ describe('run', () => {
 
 	it('passes the environment through to a fully silent run', async () => {
 		await expect(
-			run(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' })
+			run(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' }),
 		).resolves.toBeUndefined()
 	})
 })

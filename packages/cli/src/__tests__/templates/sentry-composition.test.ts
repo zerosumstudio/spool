@@ -142,14 +142,14 @@ describe('sentry addon', () => {
 			makeManifest({ shell: host({ framework: 'svelte' }) }),
 			'shell',
 			host({ framework: 'svelte' }),
-			extras
+			extras,
 		)['src/main.ts']!
 		expect(svelteMain).toContain('initSentry()')
 		const vueMain = appFiles(
 			makeManifest({ shell: host({ framework: 'vue' }) }),
 			'shell',
 			host({ framework: 'vue' }),
-			extras
+			extras,
 		)['src/main.ts']!
 		expect(vueMain).toContain('initSentry(app)')
 	})
@@ -178,7 +178,7 @@ describe('navigation and federation addons', () => {
 
 		expect(ADDONS.federation.unavailable(m)).toBeUndefined()
 		expect(ADDONS.federation.files(m)['apps/feature/src/federation/remotes.ts']).toContain(
-			'import("widgets/App")'
+			'import("widgets/App")',
 		)
 		expect(ADDONS.federation.files(m)['apps/widgets/src/federation/remotes.ts']).toBeUndefined()
 	})
@@ -197,7 +197,7 @@ describe('navigation and federation addons', () => {
 		const m = build()
 		const files = compositionFiles(m)
 		expect(files['apps/shell/src/navigation/history.ts']).toContain(
-			'export function matchRoute'
+			'export function matchRoute',
 		)
 		expect(files['apps/browse/src/navigation/location.ts']).toContain('svelte/store')
 		expect(files['apps/shell/src/federation/remotes.ts']).toContain('import("browse/App")')
@@ -216,7 +216,7 @@ describe('navigation and federation addons', () => {
 			r: remote({ path: 'apps/r', framework: 'react' }),
 		})
 		expect(compositionFiles(svelteMixed)['apps/shell/src/federation/Remote.svelte']).toContain(
-			'mountReact'
+			'mountReact',
 		)
 
 		const svelteOnly = makeManifest({
@@ -224,7 +224,7 @@ describe('navigation and federation addons', () => {
 			r: remote({ path: 'apps/r', framework: 'svelte' }),
 		})
 		expect(
-			compositionFiles(svelteOnly)['apps/shell/src/federation/Remote.svelte']
+			compositionFiles(svelteOnly)['apps/shell/src/federation/Remote.svelte'],
 		).not.toContain('mountReact')
 	})
 
@@ -242,7 +242,7 @@ describe('navigation and federation addons', () => {
 			r: remote({ path: 'apps/r', framework: 'svelte' }),
 		})
 		expect(compositionFiles(noReact)['apps/shell/src/federation/Remote.vue']).not.toContain(
-			'mountReact'
+			'mountReact',
 		)
 	})
 
@@ -261,7 +261,7 @@ describe('navigation and federation addons', () => {
 		})
 		m.addons.push('federation')
 		expect(hostWiringFiles(m, m.apps.shell!)['src/federation/Remote.svelte']).toContain(
-			'mountReact'
+			'mountReact',
 		)
 	})
 
@@ -287,7 +287,7 @@ describe('navigation and federation addons', () => {
 		const hostFederation = files['apps/shell/src/federation/index.ts']!
 		expect(hostFederation).toContain('export { Remote } from "./remote"')
 		expect(hostFederation).toContain(
-			'export { remotes, type RemoteEntry, preloadRemote } from "./remotes"'
+			'export { remotes, type RemoteEntry, type RemoteName, isRemoteName, preloadRemote } from "./remotes"',
 		)
 		expect(hostFederation).toContain('if (getInstance()) {')
 		expect(hostFederation).toContain('registerPlugins([remoteOverridesPlugin])')
@@ -301,11 +301,11 @@ describe('navigation and federation addons', () => {
 	it('re-exports the framework component the right way in the barrel', () => {
 		const svelte = compositionFiles(makeManifest({ shell: host({ framework: 'svelte' }) }))
 		expect(svelte['apps/shell/src/federation/index.ts']).toContain(
-			'export { default as Remote } from "./Remote.svelte"'
+			'export { default as Remote } from "./Remote.svelte"',
 		)
 		const vue = compositionFiles(makeManifest({ shell: host({ framework: 'vue' }) }))
 		expect(vue['apps/shell/src/federation/index.ts']).toContain(
-			'export { default as Remote } from "./Remote.vue"'
+			'export { default as Remote } from "./Remote.vue"',
 		)
 	})
 

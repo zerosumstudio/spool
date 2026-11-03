@@ -18,7 +18,7 @@ export async function promote(target: string, opts: PromoteOptions): Promise<voi
 
 	if (!name || !sha) {
 		fail(
-			`Give promote an "app@sha", e.g. \`spool promote --env production dashboard@a1b2c3d\`.`
+			`Give promote an "app@sha", e.g. \`spool promote --env production dashboard@a1b2c3d\`.`,
 		)
 	}
 

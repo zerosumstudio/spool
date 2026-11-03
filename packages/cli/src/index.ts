@@ -85,7 +85,7 @@ program
 	.option('--only <list>', 'comma-separated subset of apps')
 	.option(
 		'--rest <mode>',
-		'for remotes the selection needs but excludes: "built" previews their dist, an env name uses their deployed url'
+		'for remotes the selection needs but excludes: "built" previews their dist, an env name uses their deployed url',
 	)
 	.option('--timeout <seconds>', 'seconds to wait for each remote before giving up', '20')
 	.option('--no-ladle', 'skip the component workshop')
@@ -123,7 +123,7 @@ program
 	.option('--only <list>', 'comma-separated subset of apps')
 	.option(
 		'--env <name>',
-		'exposed as SPOOL_ENV; records the deploy and checks shared deps against it'
+		'exposed as SPOOL_ENV; records the deploy and checks shared deps against it',
 	)
 	.option('--json', 'print one JSON line per app to stdout; everything else goes to stderr')
 	.action(deploy)
@@ -157,7 +157,7 @@ program
 	.option('--pin', "write this CLI's dependency ranges even when the workspace is ahead")
 	.option(
 		'--force [files...]',
-		'overwrite generated files that have local changes; name paths to limit it'
+		'overwrite generated files that have local changes; name paths to limit it',
 	)
 	.action(upgrade)
 
@@ -181,7 +181,7 @@ program
 program
 	.command('affected')
 	.description(
-		'List apps changed since a git ref, through their own files or a package they import'
+		'List apps changed since a git ref, through their own files or a package they import',
 	)
 	.option('--since <ref>', 'git ref to diff against')
 	.option('--json', 'print { since, changed, apps }')

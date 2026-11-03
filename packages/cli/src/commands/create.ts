@@ -79,7 +79,7 @@ export async function create(dir: string | undefined, opts: CreateOptions): Prom
 	const targetDir = opts.here ? process.cwd() : resolve(process.cwd(), dir ?? inputs.name)
 	if (existsSync(join(targetDir, MANIFEST_FILE))) {
 		fail(
-			`There is already a spool workspace in ${targetDir}. Pick another folder or remove it first.`
+			`There is already a spool workspace in ${targetDir}. Pick another folder or remove it first.`,
 		)
 	}
 
@@ -100,12 +100,12 @@ export async function create(dir: string | undefined, opts: CreateOptions): Prom
 
 	log.success(`scaffolded ${pc.bold(inputs.name)} in ${pc.dim(targetDir)}`)
 	log.step(
-		`host: ${inputs.host.name} (${inputs.host.framework}) on port ${appPort(manifest, inputs.host.name)}`
+		`host: ${inputs.host.name} (${inputs.host.framework}) on port ${appPort(manifest, inputs.host.name)}`,
 	)
 
 	for (const remote of inputs.remotes) {
 		log.step(
-			`remote: ${remote.name} (${remote.framework}) on port ${appPort(manifest, remote.name)}`
+			`remote: ${remote.name} (${remote.framework}) on port ${appPort(manifest, remote.name)}`,
 		)
 	}
 
@@ -122,12 +122,12 @@ export async function create(dir: string | undefined, opts: CreateOptions): Prom
 			installed
 				? 'Dependencies installed.'
 				: pc.yellow(
-						`Install failed. Run \`${manifest.packageManager} install\` in the new folder to finish setup.`
-					)
+						`Install failed. Run \`${manifest.packageManager} install\` in the new folder to finish setup.`,
+					),
 		)
 	} else {
 		log.step(
-			`Skipped install. Run \`${manifest.packageManager} install\` in the new folder when you are ready.`
+			`Skipped install. Run \`${manifest.packageManager} install\` in the new folder when you are ready.`,
 		)
 	}
 
@@ -146,7 +146,7 @@ async function askText(options: Parameters<typeof p.text>[0]): Promise<string | 
 
 async function resolveInputs(
 	dir: string | undefined,
-	opts: CreateOptions
+	opts: CreateOptions,
 ): Promise<CreateInputs | null> {
 	let name = opts.name
 	let namePrompted = false
@@ -211,7 +211,7 @@ async function resolveAddons(opts: CreateOptions, manifest: Manifest): Promise<A
 	if (opts.addons !== undefined) return parseAddonList(opts.addons, manifest)
 	return promptAddons(
 		'Extras to include?',
-		ADDON_NAMES.filter(name => !ADDONS[name].unavailable(manifest))
+		ADDON_NAMES.filter(name => !ADDONS[name].unavailable(manifest)),
 	)
 }
 
@@ -219,7 +219,7 @@ async function resolveAddons(opts: CreateOptions, manifest: Manifest): Promise<A
 async function resolveHost(
 	opts: CreateOptions,
 	defaultFramework: FrameworkType | undefined,
-	interactive: boolean
+	interactive: boolean,
 ): Promise<AppSpec | null> {
 	let spec: ParsedSpec
 	if (opts.host !== undefined) {
@@ -243,7 +243,7 @@ async function resolveRemotes(
 	opts: CreateOptions,
 	defaultFramework: FrameworkType | undefined,
 	interactive: boolean,
-	host: AppSpec
+	host: AppSpec,
 ): Promise<AppSpec[] | null> {
 	const raw =
 		opts.remotes ??
@@ -262,7 +262,7 @@ async function resolveRemotes(
 			spec,
 			defaultFramework,
 			interactive,
-			host.framework
+			host.framework,
 		)
 		if (framework === null) return null
 		remotes.push({ name: spec.name, framework })
@@ -274,7 +274,7 @@ async function resolveFramework(
 	spec: ParsedSpec,
 	defaultFramework: FrameworkType | undefined,
 	interactive: boolean,
-	fallback: FrameworkType
+	fallback: FrameworkType,
 ): Promise<FrameworkType | null> {
 	if (spec.framework !== undefined) return spec.framework
 	if (defaultFramework !== undefined) return defaultFramework
@@ -292,7 +292,7 @@ async function scaffold(
 	targetDir: string,
 	manifest: Manifest,
 	addons: AddonName[],
-	sentryDsn: string
+	sentryDsn: string,
 ): Promise<void> {
 	const extras = templateExtras(addons)
 	const allowBuilds = addons.flatMap(addon => ADDONS[addon].allowBuilds)
@@ -306,13 +306,13 @@ async function scaffold(
 			writeFiles(
 				join(targetDir, app.path),
 				await formatFiles(appFiles(manifest, name, app, extras, targetDir)),
-				{ provenance }
-			)
+				{ provenance },
+			),
 		),
 		...addons.map(async addon =>
 			writeFiles(targetDir, await formatFiles(ADDONS[addon].files(manifest, extras)), {
 				provenance,
-			})
+			}),
 		),
 	])
 

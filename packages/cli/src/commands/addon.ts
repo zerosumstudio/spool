@@ -96,14 +96,14 @@ function scopeToApps(files: FileMap, ws: Workspace, only: string | undefined): F
 	if (unknown.length) fail(`Unknown app(s) in --only: ${unknown.join(', ')}`)
 
 	const appPaths = Object.entries(ws.manifest.apps).map(
-		([name, app]) => [name, `${app.path}/`] as const
+		([name, app]) => [name, `${app.path}/`] as const,
 	)
 
 	return Object.fromEntries(
 		Object.entries(files).filter(([rel]) => {
 			const owner = appPaths.find(([, prefix]) => rel.startsWith(prefix))
 			return !owner || wanted.has(owner[0])
-		})
+		}),
 	)
 }
 
@@ -169,7 +169,7 @@ async function declareAppDeps(ws: Workspace): Promise<void> {
 			pkg = JSON.parse(await readFile(target, 'utf8')) as PackageJsonShape
 		} catch {
 			log.warn(
-				`${name}: package.json could not be parsed; declare ${wanted.map(([dep]) => dep).join(', ')} in it yourself.`
+				`${name}: package.json could not be parsed; declare ${wanted.map(([dep]) => dep).join(', ')} in it yourself.`,
 			)
 			continue
 		}
@@ -240,7 +240,7 @@ function insertBuilds(content: string, builds: string[]): string | null {
 		out = out.replace(/allowBuilds:(\r?\n)/, `allowBuilds:$1${allow[2]}${key}: true$1`)
 		out = out.replace(
 			/onlyBuiltDependencies:(\r?\n)/,
-			`onlyBuiltDependencies:$1${only[2]}- ${key}$1`
+			`onlyBuiltDependencies:$1${only[2]}- ${key}$1`,
 		)
 	}
 	return out

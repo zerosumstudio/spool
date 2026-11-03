@@ -40,7 +40,7 @@ describe('workspaceFiles', () => {
 				'spool.workspace.ts',
 				'tsconfig.base.json',
 				'tsconfig.json',
-			].sort()
+			].sort(),
 		)
 	})
 
@@ -96,7 +96,7 @@ describe('workspaceFiles', () => {
 
 	it('carries spool as a dev dependency so fresh clones can run the scripts', () => {
 		const pkg = JSON.parse(files['package.json']!)
-		expect(pkg.devDependencies['@bkincz/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
+		expect(pkg.devDependencies['@zerosumstudio/spool']).toMatch(/^\^\d+\.\d+\.\d+/)
 		expect(pkg.scripts).toMatchObject({ dev: 'spool dev', build: 'spool build' })
 	})
 
@@ -124,7 +124,7 @@ describe.each(['npm', 'yarn'] as const)('workspaceFiles (%s)', pm => {
 			name: 'acme',
 			packageManager: pm,
 			apps: { shell: host({ remotes: ['dashboard'] }), dashboard: remote() },
-		})
+		}),
 	)
 
 	it('declares workspaces in package.json instead of pnpm-workspace.yaml', () => {
@@ -146,7 +146,7 @@ describe('workspaceFiles (yarn)', () => {
 			name: 'acme',
 			packageManager: 'yarn',
 			apps: { shell: host() },
-		})
+		}),
 	)
 
 	it('pins the node_modules linker so Berry works with Vite and federation', () => {
@@ -187,7 +187,7 @@ describe('appFiles (host)', () => {
 				'src/vite-env.d.ts',
 				'tsconfig.json',
 				'vite.config.ts',
-			].sort()
+			].sort(),
 		)
 	})
 
@@ -252,13 +252,13 @@ describe('appFiles (remote)', () => {
 	it('ships CORS only on the federation paths, and caching on the right ones', () => {
 		const headers = files['public/_headers']!
 		expect(headers).toContain(
-			'/mf-manifest.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache'
+			'/mf-manifest.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache',
 		)
 		expect(headers).toContain(
-			'/remoteEntry.js\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache'
+			'/remoteEntry.js\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache',
 		)
 		expect(headers).toContain(
-			'/assets/*\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=31536000, immutable'
+			'/assets/*\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=31536000, immutable',
 		)
 		expect(headers).toContain('/*\n  X-Content-Type-Options: nosniff')
 	})
@@ -287,7 +287,7 @@ describe('headersFile', () => {
 	it('quotes the self and none tokens, and writes an origin as-is', () => {
 		const value = headersFile(
 			'shell',
-			host({ frameAncestors: ['self', 'none', 'https://a.test'] })
+			host({ frameAncestors: ['self', 'none', 'https://a.test'] }),
 		)
 		expect(value).toContain("frame-ancestors 'self' 'none' https://a.test")
 	})
@@ -323,7 +323,7 @@ describe('remotes.d.ts: typed vs fallback', () => {
 		mkdirSync(declDir, { recursive: true })
 		writeFileSync(
 			join(declDir, 'app.d.ts'),
-			'declare const Component: () => null;\nexport default Component;\n'
+			'declare const Component: () => null;\nexport default Component;\n',
 		)
 
 		const m = manifest()
@@ -375,7 +375,7 @@ describe('hostWiringFiles', () => {
 		const typings = hostWiringFiles(m, m.apps.shell!)['src/remotes.d.ts']!
 		expect(typings).toBe(
 			"// Run `spool types` to type this from the remote's real export.\n" +
-				'declare module "dashboard/App" {\n  const Component: React.ComponentType;\n  export default Component;\n}\n'
+				'declare module "dashboard/App" {\n  const Component: React.ComponentType;\n  export default Component;\n}\n',
 		)
 	})
 })
@@ -443,7 +443,7 @@ describe('appFiles (react host with a svelte remote)', () => {
 		const typings = files['src/remotes.d.ts']!
 		expect(typings).toContain('const Component: React.ComponentType')
 		expect(typings).toContain(
-			'const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void'
+			'const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void',
 		)
 	})
 
@@ -580,7 +580,7 @@ describe('appFiles (vue host with mixed remotes)', () => {
 		const typings = files['src/remotes.d.ts']!
 		expect(typings).toContain('const Component: React.ComponentType')
 		expect(typings).toContain(
-			'const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void'
+			'const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void',
 		)
 	})
 })
@@ -589,7 +589,7 @@ describe('appFiles (mount-contract hosts with no remotes)', () => {
 	it('imports nothing, so fresh scaffolds pass unused-import lint', () => {
 		const svelteM = makeManifest({ shell: host({ framework: 'svelte' }) })
 		expect(appFiles(svelteM, 'shell', svelteM.apps.shell!)['src/app/app.svelte']).not.toContain(
-			'import'
+			'import',
 		)
 		const vueM = makeManifest({ shell: host({ framework: 'vue' }) })
 		expect(appFiles(vueM, 'shell', vueM.apps.shell!)['src/app/app.vue']).not.toContain('import')
@@ -635,11 +635,12 @@ describe('appFiles (state example extras)', () => {
 
 	it('never puts the ui dep on hosts or non-react apps', () => {
 		expect(
-			JSON.parse(appFiles(m, 'shell', m.apps.shell!, withUi)['package.json']!).dependencies.ui
+			JSON.parse(appFiles(m, 'shell', m.apps.shell!, withUi)['package.json']!).dependencies
+				.ui,
 		).toBeUndefined()
 		expect(
 			JSON.parse(appFiles(m, 'widget', m.apps.widget!, withUi)['package.json']!).dependencies
-				.ui
+				.ui,
 		).toBeUndefined()
 	})
 
@@ -662,11 +663,11 @@ describe('appFiles (state example extras)', () => {
 	it('shows the shared count on svelte and vue hosts too', () => {
 		const svelteM = makeManifest({ shell: host({ framework: 'svelte' }) })
 		expect(
-			appFiles(svelteM, 'shell', svelteM.apps.shell!, plain)['src/app/app.svelte']
+			appFiles(svelteM, 'shell', svelteM.apps.shell!, plain)['src/app/app.svelte'],
 		).toContain('data-testid="shell-count"')
 		const vueM = makeManifest({ shell: host({ framework: 'vue' }) })
 		expect(appFiles(vueM, 'shell', vueM.apps.shell!, plain)['src/app/app.vue']).toContain(
-			'data-testid="shell-count"'
+			'data-testid="shell-count"',
 		)
 	})
 
@@ -674,7 +675,7 @@ describe('appFiles (state example extras)', () => {
 		const app = appFiles(m, 'dash', m.apps.dash!)['src/app/app.tsx']!
 		expect(app).not.toContain('counterMachine')
 		expect(
-			JSON.parse(appFiles(m, 'dash', m.apps.dash!)['package.json']!).dependencies.ui
+			JSON.parse(appFiles(m, 'dash', m.apps.dash!)['package.json']!).dependencies.ui,
 		).toBeUndefined()
 	})
 })
@@ -782,7 +783,7 @@ describe('ciWorkflows', () => {
 				name: 'acme',
 				packageManager: 'npm',
 				apps: { dash: { ...remote(), deploy: 'x' } },
-			})
+			}),
 		)['.github/workflows/deploy-dash.yml']!
 		expect(npm).toContain('npm ci')
 		expect(npm).toContain('"package-lock.json"')
