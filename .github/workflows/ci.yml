@@ -182,9 +182,13 @@ jobs:
         env:
             # An entry with no addons set gets every addon, so the type-check, lint and build see every generated file.
             ALL_ADDONS: ladle,playwright,lint,test,turbo,state,sentry,navigation
-            WORKSPACE: ${{ runner.temp }}/generated
 
         steps:
+            # The runner context isn't available in job env, so the path is set once here.
+            - name: Set the workspace path
+              shell: bash
+              run: echo "WORKSPACE=$RUNNER_TEMP/generated" >> "$GITHUB_ENV"
+
             - name: Checkout
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
