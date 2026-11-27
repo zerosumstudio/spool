@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename } from 'node:path'
-import { formatFiles } from './format.js'
+import { formatFile } from './format.js'
 
 /*
  *   TYPES
@@ -46,7 +46,7 @@ export function dependencyHome(
 	if (pkg.dependencies?.[dep] !== undefined) return pkg.dependencies
 	if (pkg.devDependencies?.[dep] !== undefined) return pkg.devDependencies
 
-	return (pkg[section] ??= {}) as Record<string, string>
+	return (pkg[section] ??= {})
 }
 
 /*
@@ -66,9 +66,11 @@ export async function editJsonFile(
 
 	if (opts.write ?? true) {
 		const rel = basename(target)
-		const formatted = await formatFiles({ [rel]: `${JSON.stringify(json)}\n` }, opts.root)
-
-		await writeFile(target, formatted[rel]!, 'utf8')
+		await writeFile(
+			target,
+			await formatFile(rel, `${JSON.stringify(json)}\n`, opts.root),
+			'utf8',
+		)
 	}
 
 	return changes

@@ -97,33 +97,34 @@ describe('preview', () => {
 describe('build', () => {
 	it('builds every app by default', async () => {
 		await build({})
-		expect(buildAll).toHaveBeenCalledWith(
-			expect.objectContaining({ root: dir }),
-			undefined,
-			undefined,
-			undefined,
-		)
+		expect(buildAll).toHaveBeenCalledWith(expect.objectContaining({ root: dir }), {
+			onResult: expect.any(Function),
+		})
 	})
 
 	it('passes the only filter and env through', async () => {
 		await build({ only: 'dashboard', env: 'staging' })
-		expect(buildAll).toHaveBeenCalledWith(
-			expect.anything(),
-			['dashboard'],
-			'staging',
-			undefined,
-		)
+		expect(buildAll).toHaveBeenCalledWith(expect.anything(), {
+			only: ['dashboard'],
+			env: 'staging',
+			onResult: expect.any(Function),
+		})
 	})
 
 	it('treats an empty --env as no env', async () => {
 		await build({ env: '' })
-		expect(buildAll).toHaveBeenCalledWith(expect.anything(), undefined, undefined, undefined)
+		expect(buildAll).toHaveBeenCalledWith(expect.anything(), {
+			onResult: expect.any(Function),
+		})
 	})
 
 	it('reads an exported SPOOL_ENV when --env is absent', async () => {
 		process.env.SPOOL_ENV = 'staging'
 		await build({})
-		expect(buildAll).toHaveBeenCalledWith(expect.anything(), undefined, 'staging', undefined)
+		expect(buildAll).toHaveBeenCalledWith(expect.anything(), {
+			env: 'staging',
+			onResult: expect.any(Function),
+		})
 	})
 })
 
@@ -137,12 +138,18 @@ describe('deploy', () => {
 			expect.objectContaining({ root: dir }),
 			undefined,
 			undefined,
+			expect.any(Function),
 		)
 	})
 
 	it('passes the only filter and env through', async () => {
 		await deploy({ only: 'dashboard', env: 'staging' })
-		expect(deployAll).toHaveBeenCalledWith(expect.anything(), ['dashboard'], 'staging')
+		expect(deployAll).toHaveBeenCalledWith(
+			expect.anything(),
+			['dashboard'],
+			'staging',
+			expect.any(Function),
+		)
 	})
 })
 
@@ -185,7 +192,7 @@ describe('doctor', () => {
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining('no "url"'))
 	})
 
-	it('sets a non-zero exit code when it finds an error', async () => {
+	it('fails with CHECK_FAILED, and the problems, when it finds an error', async () => {
 		const manifest = JSON.parse(readFileSync(join(dir, 'spool.json'), 'utf8'))
 		manifest.apps.dashboard.port = manifest.apps.shell.port
 		writeFileSync(join(dir, 'spool.json'), JSON.stringify(manifest))
@@ -193,7 +200,6 @@ describe('doctor', () => {
 		vi.spyOn(log, 'error').mockImplementation(() => {})
 		vi.spyOn(log, 'info').mockImplementation(() => {})
 
-		await doctor()
-		expect(process.exitCode).toBe(1)
+		await expect(doctor()).rejects.toMatchObject({ code: 'CHECK_FAILED' })
 	})
 })

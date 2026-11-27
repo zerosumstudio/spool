@@ -4,11 +4,23 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { findWorkspaceRoot, type Workspace } from '../core/workspace.js'
-import { MANIFEST_FILE, WORKSPACE_FILE, parseManifest } from '../core/config.js'
+import { findWorkspaceRoot, requireWorkspaceRoot } from '../core/manifest-file.js'
+import type { Workspace } from '../core/workspace.js'
+import {
+	HELPER_FILE,
+	MANIFEST_FILE,
+	WORKSPACE_FILE,
+	dropSharedSvelte,
+	type AppConfig,
+	type Manifest,
+	getApp,
+	migrateManifest,
+	parseManifest,
+} from '../core/config.js'
 import { appDependencies, NODE_RANGE, PNPM_VERSION, rootDevDependencies } from '../core/versions.js'
 import {
-	appConfigFiles,
+	prettierrc,
+	viteConfig,
 	hostWiringFiles,
 	workspaceScripts,
 	workspaceFiles,
@@ -20,8 +32,10 @@ import { helperFiles } from '../core/templates/helpers.js'
 import { sentryFiles } from '../core/templates/sentry.js'
 import { navigationFiles } from '../core/templates/composition.js'
 import { OwnedWriter } from '../core/fswrite.js'
-import { formatFiles } from '../core/format.js'
+import { replaceContents } from '../util/json.js'
+import { formatFile, formatFiles } from '../core/format.js'
 import { CliError } from '../util/errors.js'
+import { assertConfined } from '../util/confine.js'
 import { log } from '../util/logger.js'
 import { isLocalOverride, isUpgrade } from '../util/semver.js'
 
@@ -30,7 +44,8 @@ import { isLocalOverride, isUpgrade } from '../util/semver.js'
  ***************************************************************************************************/
 export interface UpgradeOptions {
 	dryRun?: boolean
-	pin?: boolean
+	/** Write this CLI's dependency ranges even when the workspace is ahead of them. */
+	downgrade?: boolean
 	/** true forces every file; a list of paths forces only those. */
 	force?: boolean | string[]
 }
@@ -39,17 +54,17 @@ interface UpgradeContext {
 	ws: Workspace
 	writer: ChangeWriter
 	/** Use spool's own ranges verbatim instead of what the workspace asks for. */
-	pin: boolean
+	downgrade: boolean
 	ranges: Map<string, RangeInfo>
 }
 
-const shouldSet = (from: string | undefined, to: string, pin: boolean): boolean =>
-	isLocalOverride(from) ? false : pin ? from !== to : isUpgrade(from, to)
+const shouldSet = (from: string | undefined, to: string, downgrade: boolean): boolean =>
+	isLocalOverride(from) ? false : downgrade ? from !== to : isUpgrade(from, to)
 
 const PLAIN_PNPM = /^pnpm@(\d+\.\d+\.\d+)$/
 
-const targetRange = (ctx: UpgradeContext, dep: string, ours: string): string =>
-	ctx.pin ? ours : (ctx.ranges.get(dep)?.target ?? ours)
+const targetRange = (context: UpgradeContext, dep: string, ours: string): string =>
+	context.downgrade ? ours : (context.ranges.get(dep)?.target ?? ours)
 
 /*
  *   GITIGNORE
@@ -67,6 +82,7 @@ async function ensureGitignore(root: string, dryRun: boolean): Promise<boolean> 
 
 	log.step(`workspace: ${dryRun ? 'would add' : 'added'} ${missing.join(', ')} to .gitignore`)
 	if (!dryRun) {
+		assertConfined(root, target)
 		const separator = current === '' || current.endsWith('\n') ? '' : '\n'
 		await writeFile(target, `${current}${separator}${missing.join('\n')}\n`, 'utf8')
 	}
@@ -76,7 +92,40 @@ async function ensureGitignore(root: string, dryRun: boolean): Promise<boolean> 
 /*
  *   UPGRADE
  ***************************************************************************************************/
+/** `spool upgrade --force <files...>`: paths only make sense with --force, and limit it. */
+export async function upgradeWithArgs(
+	args: string[],
+	{ force, ...rest }: Omit<UpgradeOptions, 'force'> & { force?: boolean | string },
+): Promise<void> {
+	if (args.length && !force) {
+		throw new CliError('Files only go with --force: spool upgrade --force <files...>', 'USAGE')
+	}
+
+	await upgrade({ ...rest, ...(force ? { force: args.length ? args : true } : {}) })
+}
+
 export async function upgrade(opts: UpgradeOptions): Promise<void> {
+	const dryRun = opts.dryRun ?? false
+	const { context, provenance } = await openUpgrade(opts)
+	const { ws, writer } = context
+
+	await upgradeRoot(context)
+	if (await ensureGitignore(ws.root, dryRun)) writer.changed++
+
+	for (const [name, app] of Object.entries(ws.manifest.apps)) await upgradeApp(context, name, app)
+
+	if (!dryRun) {
+		provenance?.pruneMissing(ws.root)
+		await provenance?.save()
+	}
+	noteNewCapabilities(writer)
+	writer.summarize(ws)
+}
+
+/** Loads and migrates the manifest, and sets up the writer every step shares. */
+async function openUpgrade(
+	opts: UpgradeOptions,
+): Promise<{ context: UpgradeContext; provenance: Provenance | null }> {
 	const root = findWorkspaceRoot()
 	const provenance = root === null ? null : Provenance.load(root)
 	const writer = new ChangeWriter(
@@ -86,96 +135,90 @@ export async function upgrade(opts: UpgradeOptions): Promise<void> {
 		opts.force ?? false,
 	)
 	const ws = await loadForUpgrade(writer, provenance)
-	const ctx: UpgradeContext = { ws, writer, pin: opts.pin ?? false, ranges: resolveRanges(ws) }
 
-	await upgradeRoot(ctx)
-	if (await ensureGitignore(ws.root, opts.dryRun ?? false)) writer.changed++
+	return {
+		context: { ws, writer, downgrade: opts.downgrade ?? false, ranges: resolveRanges(ws) },
+		provenance,
+	}
+}
+
+async function upgradeApp(context: UpgradeContext, name: string, app: AppConfig): Promise<void> {
+	const { ws, writer } = context
+	const dir = join(ws.root, app.path)
+
+	if (!existsSync(dir)) {
+		log.warn(`${name}: folder "${app.path}" is missing, skipping. Run \`spool doctor\`.`)
+		return
+	}
 
 	const sentry = ws.manifest.addons.includes('sentry')
-	const navigation = ws.manifest.addons.includes('navigation')
-	const envExamples = sentry ? sentryFiles(ws.manifest) : {}
+	const source = await formatFile('vite.config.ts', viteConfig(name, app, sentry), ws.root)
 
-	for (const [name, app] of Object.entries(ws.manifest.apps)) {
-		const dir = join(ws.root, app.path)
+	await writer.replaceGenerated(dir, 'vite.config.ts', source, name)
+	await writer.remove(dir, 'public/_headers', name)
 
-		if (!existsSync(dir)) {
-			log.warn(`${name}: folder "${app.path}" is missing, skipping. Run \`spool doctor\`.`)
-			continue
-		}
+	const envExample = (sentry ? sentryFiles(ws.manifest) : {})[`${app.path}/.env.example`]
+	if (envExample !== undefined) await writer.add(dir, '.env.example', envExample, name)
 
-		const generated = await formatFiles(appConfigFiles(name, app, sentry), ws.root)
+	const typings = await formatFiles(hostWiringFiles(ws.manifest, app, ws.root), ws.root)
 
-		await writer.replaceGenerated(dir, 'vite.config.ts', generated['vite.config.ts']!, name)
-		await writer.replaceGenerated(dir, 'public/_headers', generated['public/_headers']!, name)
+	for (const [rel, content] of Object.entries(typings)) {
+		await writer.replaceGenerated(dir, rel, content, name)
+	}
 
-		const envExample = envExamples[`${app.path}/.env.example`]
-		if (envExample !== undefined) await writer.add(dir, '.env.example', envExample, name)
+	if (ws.manifest.addons.includes('navigation')) {
+		const files = await formatFiles(navigationFiles(app), ws.root)
 
-		const typings = await formatFiles(hostWiringFiles(ws.manifest, app, ws.root), ws.root)
-		for (const [rel, content] of Object.entries(typings)) {
+		for (const [rel, content] of Object.entries(files)) {
 			await writer.replaceGenerated(dir, rel, content, name)
 		}
-
-		if (navigation) {
-			const files = await formatFiles(navigationFiles(app), ws.root)
-			for (const [rel, content] of Object.entries(files)) {
-				await writer.replaceGenerated(dir, rel, content, name)
-			}
-		}
-
-		await upgradeAppPackage(ctx, name, dir)
 	}
 
-	if (!opts.dryRun) {
-		provenance?.pruneMissing(ws.root)
-		await provenance?.save()
+	await upgradeAppPackage(context, name, dir)
+}
+
+/** Where the pre-1.0 shell files moved to, so their provenance follows them. */
+const SHELL_RENAMES: [from: string, to: string][] = [
+	['src/shell/remote.tsx', 'src/federation/remote.tsx'],
+	['src/shell/Remote.svelte', 'src/federation/Remote.svelte'],
+	['src/shell/Remote.vue', 'src/federation/Remote.vue'],
+	['src/shell/remotes.ts', 'src/federation/remotes.ts'],
+	['src/shell/index.ts', 'src/federation/index.ts'],
+	['src/shell/history.ts', 'src/navigation/history.ts'],
+]
+
+function renameShellFiles(
+	root: string,
+	manifest: Record<string, unknown>,
+	provenance: Provenance | null,
+): void {
+	for (const app of Object.values(manifest.apps as Record<string, { path?: unknown }>)) {
+		if (typeof app.path !== 'string') continue
+
+		const dir = join(root, app.path)
+
+		for (const [from, to] of SHELL_RENAMES) provenance?.rename(dir, from, to)
 	}
-	noteNewCapabilities(writer)
-	writer.summarize(ws)
 }
 
 async function loadForUpgrade(
 	writer: ChangeWriter,
 	provenance: Provenance | null,
 ): Promise<Workspace> {
-	const root = findWorkspaceRoot()
-	if (!root) {
-		throw new CliError(
-			`No ${MANIFEST_FILE} found. Run \`spool create\` first, or cd into a spool workspace.`,
-		)
-	}
+	const root = requireWorkspaceRoot()
 
 	let raw: unknown
 	await writer.editJson(root, MANIFEST_FILE, 'workspace', manifest => {
+		const hadShell = Array.isArray(manifest.addons) && manifest.addons.includes('shell')
+		const { manifest: migrated, changes } = migrateManifest(manifest)
+		const droppedSvelte = dropSharedSvelte(migrated)
+
+		if (droppedSvelte && !changes.includes(droppedSvelte)) changes.push(droppedSvelte)
+
+		if (changes.length) replaceContents(manifest, migrated)
 		raw = manifest
-		const changes: string[] = []
 
-		if (manifest.bundler === 'rspack') {
-			delete manifest.bundler
-			changes.push('removed unsupported bundler "rspack"')
-		}
-
-		const addons = manifest.addons
-		if (Array.isArray(addons) && addons.includes('shell')) {
-			const kept = addons.filter(name => name !== 'shell')
-
-			if (!kept.includes('navigation')) kept.push('navigation')
-			if (!kept.includes('federation')) kept.push('federation')
-
-			manifest.addons = kept
-			changes.push('split addon "shell" into "navigation" and "federation"')
-
-			for (const app of Object.values(manifest.apps as Record<string, { path?: unknown }>)) {
-				if (typeof app.path !== 'string') continue
-				const dir = join(root, app.path)
-				provenance?.rename(dir, 'src/shell/remote.tsx', 'src/federation/remote.tsx')
-				provenance?.rename(dir, 'src/shell/Remote.svelte', 'src/federation/Remote.svelte')
-				provenance?.rename(dir, 'src/shell/Remote.vue', 'src/federation/Remote.vue')
-				provenance?.rename(dir, 'src/shell/remotes.ts', 'src/federation/remotes.ts')
-				provenance?.rename(dir, 'src/shell/index.ts', 'src/federation/index.ts')
-				provenance?.rename(dir, 'src/shell/history.ts', 'src/navigation/history.ts')
-			}
-		}
+		if (hadShell) renameShellFiles(root, manifest, provenance)
 
 		return changes
 	})
@@ -183,21 +226,25 @@ async function loadForUpgrade(
 	return { root, manifestPath: join(root, MANIFEST_FILE), manifest: parseManifest(raw), raw }
 }
 
-async function upgradeRoot(ctx: UpgradeContext): Promise<void> {
-	const { ws, writer, pin } = ctx
+async function upgradeRoot(context: UpgradeContext): Promise<void> {
+	const { ws, writer, downgrade } = context
 	const helper = await formatFiles(helperFiles(), ws.root)
 
 	for (const [rel, content] of Object.entries(helper)) {
 		await writer.replaceGenerated(ws.root, rel, content, 'workspace')
 	}
+	await writer.remove(ws.root, HELPER_FILE, 'workspace')
+	await writer.replaceGenerated(ws.root, '.prettierrc', prettierrc(ws.manifest), 'workspace')
 
 	const rootFiles = workspaceFiles(ws.manifest)
 	const rootConfigs = await formatFiles(
-		{
-			'tsconfig.json': rootFiles['tsconfig.json']!,
-			'.prettierignore': rootFiles['.prettierignore']!,
-			'.gitattributes': rootFiles['.gitattributes']!,
-		},
+		Object.fromEntries(
+			['tsconfig.json', '.prettierignore', '.gitattributes'].flatMap(rel => {
+				const content = rootFiles[rel]
+
+				return content === undefined ? [] : [[rel, content]]
+			}),
+		),
 		ws.root,
 	)
 
@@ -207,50 +254,80 @@ async function upgradeRoot(ctx: UpgradeContext): Promise<void> {
 
 	await writer.editJson(ws.root, 'package.json', 'workspace', pkg => {
 		const changes: string[] = []
-		if (shouldSet(pkg.engines?.node, NODE_RANGE, pin)) {
-			pkg.engines = { ...pkg.engines, node: NODE_RANGE }
-			changes.push(`engines.node -> ${NODE_RANGE}`)
-		}
+		syncEngines(pkg, downgrade, changes)
 
-		pkg.scripts ??= {}
-		for (const [script, command] of Object.entries(workspaceScripts(ws.manifest))) {
-			if (pkg.scripts[script] === undefined) {
-				pkg.scripts[script] = command
-				changes.push(`scripts.${script} added`)
-			}
-		}
-
-		const pinned = pkg.packageManager
-		const movable = pinned === undefined || PLAIN_PNPM.test(pinned)
-
-		if (
-			ws.manifest.packageManager === 'pnpm' &&
-			movable &&
-			shouldSet(PLAIN_PNPM.exec(pinned ?? '')?.[1], PNPM_VERSION, pin)
-		) {
-			pkg.packageManager = `pnpm@${PNPM_VERSION}`
-			changes.push(`packageManager -> pnpm@${PNPM_VERSION}`)
-		}
+		addMissingScripts(pkg, ws.manifest, changes)
+		syncPackageManager(pkg, ws.manifest, downgrade, changes)
 
 		pkg.devDependencies ??= {}
 		const expected = rootDevDependencies(ws.manifest)
 		for (const [dep, ours] of Object.entries(expected)) {
-			const range = targetRange(ctx, dep, ours)
-			const current = pkg.devDependencies[dep]
-
-			if (shouldSet(current, range, pin)) {
-				changes.push(`${dep} ${current ?? 'added'} -> ${range}`)
-				pkg.devDependencies[dep] = range
-			} else if (current !== range && !isLocalOverride(current)) writer.noteKept()
+			syncRange(context, pkg.devDependencies, [dep, targetRange(context, dep, ours)], changes)
 		}
 
 		return changes
 	})
 }
 
-async function upgradeAppPackage(ctx: UpgradeContext, name: string, dir: string): Promise<void> {
-	const { ws, writer, pin } = ctx
-	const app = ws.manifest.apps[name]!
+function addMissingScripts(pkg: PackageJsonShape, manifest: Manifest, changes: string[]): void {
+	pkg.scripts ??= {}
+
+	for (const [script, command] of Object.entries(workspaceScripts(manifest))) {
+		if (pkg.scripts[script] !== undefined) continue
+
+		pkg.scripts[script] = command
+		changes.push(`scripts.${script} added`)
+	}
+}
+
+/** Moves a plain pnpm pin forward; a pin with a hash or a custom manager is the user's. */
+function syncPackageManager(
+	pkg: PackageJsonShape,
+	manifest: Manifest,
+	downgrade: boolean,
+	changes: string[],
+): void {
+	const pinned = pkg.packageManager
+	const movable = pinned === undefined || PLAIN_PNPM.test(pinned)
+
+	if (manifest.packageManager !== 'pnpm' || !movable) return
+	if (!shouldSet(PLAIN_PNPM.exec(pinned ?? '')?.[1], PNPM_VERSION, downgrade)) return
+
+	pkg.packageManager = `pnpm@${PNPM_VERSION}`
+	changes.push(`packageManager -> pnpm@${PNPM_VERSION}`)
+}
+
+/** Moves one dependency to the range spool wants, or notes that it was left alone. */
+function syncRange(
+	context: UpgradeContext,
+	home: Record<string, string>,
+	[dep, range]: [string, string],
+	changes: string[],
+): void {
+	const current = home[dep]
+
+	if (shouldSet(current, range, context.downgrade)) {
+		changes.push(`${dep} ${current ?? 'added'} -> ${range}`)
+		home[dep] = range
+	} else if (current !== range && !isLocalOverride(current)) {
+		context.writer.noteKept()
+	}
+}
+
+function syncEngines(pkg: PackageJsonShape, downgrade: boolean, changes: string[]): void {
+	if (!shouldSet(pkg.engines?.node, NODE_RANGE, downgrade)) return
+
+	pkg.engines = { ...pkg.engines, node: NODE_RANGE }
+	changes.push(`engines.node -> ${NODE_RANGE}`)
+}
+
+async function upgradeAppPackage(
+	context: UpgradeContext,
+	name: string,
+	dir: string,
+): Promise<void> {
+	const { ws, writer, downgrade } = context
+	const app = getApp(ws.manifest, name)
 	const expected = appDependencies(ws.manifest, app)
 
 	await writer.editJson(dir, 'package.json', name, pkg => {
@@ -263,20 +340,13 @@ async function upgradeAppPackage(ctx: UpgradeContext, name: string, dir: string)
 			['devDependencies', expected.devDependencies],
 		] as const) {
 			for (const [dep, ours] of Object.entries(expectedDeps)) {
-				const range = targetRange(ctx, dep, ours)
 				const home = dependencyHome(pkg, dep, section)
 
-				if (shouldSet(home[dep], range, pin)) {
-					changes.push(`${dep} ${home[dep] ?? 'added'} -> ${range}`)
-					home[dep] = range
-				} else if (home[dep] !== range && !isLocalOverride(home[dep])) writer.noteKept()
+				syncRange(context, home, [dep, targetRange(context, dep, ours)], changes)
 			}
 		}
 
-		if (shouldSet(pkg.engines?.node, NODE_RANGE, pin)) {
-			pkg.engines = { ...pkg.engines, node: NODE_RANGE }
-			changes.push(`engines.node -> ${NODE_RANGE}`)
-		}
+		syncEngines(pkg, downgrade, changes)
 
 		return changes
 	})
@@ -325,7 +395,7 @@ class ChangeWriter extends OwnedWriter {
 
 		if (this.kept) {
 			log.step(
-				`left ${this.kept} dependency range(s) alone; spool cannot compare them to what it would write. Rerun with --pin to overwrite them.`,
+				`left ${this.kept} dependency range(s) alone; spool cannot compare them to what it would write. Rerun with --downgrade to overwrite them.`,
 			)
 		}
 

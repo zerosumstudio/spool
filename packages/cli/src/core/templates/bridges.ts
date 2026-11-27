@@ -1,6 +1,5 @@
-// NOTE: Ignore the weird spacing in this file, it's to make the generated code look nice in the templates.
 /*
- *   FRAMEWORK BRIDGES
+ *   IMPORTS
  ***************************************************************************************************/
 import type { RemoteRef, RemoteTypingContext } from './index.js'
 import { typedExposeDeclaration } from './expose-typing.js'
@@ -10,18 +9,20 @@ export const STATE_STORE_FILE = 'src/state/counter.ts'
 export const STATE_STORE_IMPORT = '@/state/counter'
 
 /** Shared-counter example strings; the generated e2e test asserts these exactly. */
-export const STATE_COUNT_TESTID = 'shell-count'
+export const STATE_COUNT_TESTID = 'shared-count'
 export const STATE_COUNT_TEXT = 'Shared count:'
 
 export function mountContractTyping(ref: RemoteRef, ctx: RemoteTypingContext): string {
 	return ref.exposes
 		.map(expose => {
 			const typed = typedExposeDeclaration(ref, expose, ctx)
+
 			if (typed) return typed
+
 			return `// Run \`spool types\` to type this from the remote's real export.
-declare module "${ref.name}/${expose}" {
-  const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void;
-  export default mount;
+declare module '${ref.name}/${expose}' {
+	const mount: (target: HTMLElement, props?: Record<string, unknown>) => () => void
+	export default mount
 }
 `
 		})
@@ -35,17 +36,21 @@ export function reactBridgeFiles(refs: RemoteRef[]): Record<string, string> {
 }
 
 function reactBridge(): string {
-	return `import { createElement, type ComponentType } from "react";
-import { createRoot } from "react-dom/client";
+	return `import { createElement, type ComponentType } from 'react'
+import { createRoot } from 'react-dom/client'
 
-export function mountReact(
-  Component: ComponentType<Record<string, unknown>>,
-  target: HTMLElement,
-  props?: Record<string, unknown>,
-): () => void {
-  const root = createRoot(target);
-  root.render(createElement(Component, props));
-  return () => root.unmount();
+export function mountReact(component: unknown, target: HTMLElement, props?: object): () => void {
+	const root = createRoot(target)
+	root.render(
+		createElement(
+			component as ComponentType<Record<string, unknown>>,
+			props as Record<string, unknown> | undefined,
+		),
+	)
+
+	return () => {
+		root.unmount()
+	}
 }
 `
 }

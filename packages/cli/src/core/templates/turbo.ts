@@ -1,7 +1,7 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import { HELPER_FILE, WORKSPACE_FILE, MANIFEST_FILE, type Manifest } from '../config.js'
+import { WORKSPACE_FILE, MANIFEST_FILE, type Manifest } from '../config.js'
 
 /*
  *   TURBO CONFIG
@@ -27,7 +27,7 @@ export function turboConfig(m: Manifest): string {
 
 	const config = {
 		$schema: 'https://turborepo.com/schema.json',
-		globalDependencies: [MANIFEST_FILE, HELPER_FILE, WORKSPACE_FILE],
+		globalDependencies: [MANIFEST_FILE, WORKSPACE_FILE],
 		globalEnv: ['SPOOL_ENV'],
 		tasks: {
 			build: {

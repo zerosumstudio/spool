@@ -15,7 +15,7 @@ import { freshDir, removeDir } from '../helpers.js'
  ***************************************************************************************************/
 vi.mock('../../util/exec.js', () => ({ run: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@clack/prompts', async importOriginal => {
-	const actual = (await importOriginal()) as typeof p
+	const actual = await importOriginal<typeof p>()
 	return { ...actual, select: vi.fn() }
 })
 
@@ -26,7 +26,7 @@ let dir: string
 let cwd: string
 
 const read = (rel: string) => readFileSync(join(dir, rel), 'utf8')
-const HELPER = 'spool.vite.ts'
+const HELPER = 'spool.workspace.ts'
 
 function editGeneratedFiles(): { helper: string; config: string } {
 	const helper = `${read(HELPER)}\n// my own helper on top\n`
@@ -80,7 +80,7 @@ describe('upgrade overwrite prompt', () => {
 
 		await upgrade({})
 
-		expect(read(HELPER)).toContain('export function spoolApp')
+		expect(read(HELPER)).toContain('export function app(')
 	})
 
 	it('asks once for overwrite-all and applies it to the rest', async () => {
@@ -90,7 +90,7 @@ describe('upgrade overwrite prompt', () => {
 		await upgrade({})
 
 		expect(p.select).toHaveBeenCalledTimes(1)
-		expect(read(HELPER)).toContain('export function spoolApp')
+		expect(read(HELPER)).toContain('export function app(')
 		expect(read('apps/shell/vite.config.ts')).toContain("spoolApp('shell'")
 	})
 
@@ -136,6 +136,6 @@ describe('upgrade overwrite prompt', () => {
 		await upgrade({ force: true })
 
 		expect(p.select).not.toHaveBeenCalled()
-		expect(read(HELPER)).toContain('export function spoolApp')
+		expect(read(HELPER)).toContain('export function app(')
 	})
 })

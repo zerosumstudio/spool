@@ -1,0 +1,6 @@
+{
+	"name": "@vitejs/plugin-vue",
+	"version": "1.0.0",
+	"type": "module",
+	"types": "./index.d.ts"
+}

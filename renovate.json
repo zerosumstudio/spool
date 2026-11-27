@@ -3,14 +3,66 @@
 	"extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
 	"minimumReleaseAge": "3 days",
 	"internalChecksFilter": "strict",
+	"customManagers": [
+		{
+			"description": "The action pins in the table that generated workflows are written from",
+			"customType": "regex",
+			"managerFilePatterns": ["/^packages/cli/src/core/templates/workflows\\.ts$/"],
+			"matchStrings": [
+				"action: '(?<depName>[^']+)',\\s+sha: '(?<currentDigest>[a-f0-9]{40})',\\s+tag: '(?<currentValue>v[^']+)'"
+			],
+			"datasourceTemplate": "github-tags"
+		},
+		{
+			"description": "The dependency ranges a generated workspace gets",
+			"customType": "regex",
+			"managerFilePatterns": ["/^packages/cli/src/core/versions\\.ts$/"],
+			"matchStrings": [
+				"['\"]?(?<depName>@?[a-z][a-z0-9./-]*)['\"]?: '(?<currentValue>[\\^~]?\\d[^']*)'"
+			],
+			"datasourceTemplate": "npm"
+		},
+		{
+			"description": "PNPM_VERSION in the versions a generated workspace gets",
+			"customType": "regex",
+			"managerFilePatterns": ["/^packages/cli/src/core/versions\\.ts$/"],
+			"matchStrings": ["PNPM_VERSION = '(?<currentValue>[\\^~]?\\d[^']*)'"],
+			"depNameTemplate": "pnpm",
+			"datasourceTemplate": "npm"
+		},
+		{
+			"description": "TURBO_VERSION in the versions a generated workspace gets",
+			"customType": "regex",
+			"managerFilePatterns": ["/^packages/cli/src/core/versions\\.ts$/"],
+			"matchStrings": ["TURBO_VERSION = '(?<currentValue>[\\^~]?\\d[^']*)'"],
+			"depNameTemplate": "turbo",
+			"datasourceTemplate": "npm"
+		},
+		{
+			"description": "SENTRY_VERSION in the versions a generated workspace gets",
+			"customType": "regex",
+			"managerFilePatterns": ["/^packages/cli/src/core/versions\\.ts$/"],
+			"matchStrings": ["SENTRY_VERSION = '(?<currentValue>[\\^~]?\\d[^']*)'"],
+			"depNameTemplate": "@sentry/browser",
+			"datasourceTemplate": "npm"
+		},
+		{
+			"description": "SENTRY_VITE_PLUGIN_VERSION in the versions a generated workspace gets",
+			"customType": "regex",
+			"managerFilePatterns": ["/^packages/cli/src/core/versions\\.ts$/"],
+			"matchStrings": ["SENTRY_VITE_PLUGIN_VERSION = '(?<currentValue>[\\^~]?\\d[^']*)'"],
+			"depNameTemplate": "@sentry/vite-plugin",
+			"datasourceTemplate": "npm"
+		}
+	],
 	"packageRules": [
 		{
-			"matchManagers": ["github-actions"],
+			"matchManagers": ["github-actions", "custom.regex"],
 			"matchUpdateTypes": ["minor", "patch", "pin"],
 			"groupName": "github actions"
 		},
 		{
-			"matchManagers": ["github-actions"],
+			"matchManagers": ["github-actions", "custom.regex"],
 			"matchUpdateTypes": ["digest"],
 			"dependencyDashboardApproval": true
 		},
@@ -18,6 +70,12 @@
 			"matchDepTypes": ["devDependencies"],
 			"matchUpdateTypes": ["minor", "patch"],
 			"groupName": "dev dependencies"
+		},
+		{
+			"description": "The runtime is pinned to the version the generated templates are written against",
+			"matchPackageNames": ["@module-federation/*"],
+			"groupName": "module federation",
+			"dependencyDashboardApproval": true
 		}
 	]
 }

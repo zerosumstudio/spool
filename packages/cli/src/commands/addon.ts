@@ -4,7 +4,6 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import * as p from '@clack/prompts'
 import { requireWorkspace, saveManifest, type Workspace } from '../core/workspace.js'
 import {
 	ADDONS,
@@ -13,21 +12,22 @@ import {
 	promptAddons,
 	type AddonName,
 } from '../core/addons.js'
-import { appConfigFiles } from '../core/generators.js'
+import { viteConfig } from '../core/generators.js'
 import {
 	SENTRY_SDK,
 	SENTRY_VERSION,
 	SENTRY_VITE_PLUGIN_VERSION,
 	SHARED_EXTRAS,
 } from '../core/versions.js'
-import { formatFiles } from '../core/format.js'
+import { formatFile, formatFiles } from '../core/format.js'
 import { writeFiles, OwnedWriter } from '../core/fswrite.js'
 import { Provenance } from '../core/provenance.js'
 import { installDependencies } from '../core/install.js'
 import { dependencyHome, type PackageJsonShape } from '../core/packages.js'
 import type { FileMap } from '../core/filemap.js'
 import { packageName, splitList, yamlKey } from '../util/names.js'
-import { log, fail } from '../util/logger.js'
+import { CliError } from '../util/errors.js'
+import { log } from '../util/logger.js'
 
 /*
  *   TYPES
@@ -45,10 +45,6 @@ export async function addon(entries: string[], opts: AddonOptions): Promise<void
 	const ws = await requireWorkspace()
 
 	const names = await resolveNames(entries, ws)
-	if (names === null) {
-		p.cancel('Cancelled.')
-		return
-	}
 	if (!names.length) {
 		log.info('nothing to add')
 		return
@@ -93,7 +89,11 @@ function scopeToApps(files: FileMap, ws: Workspace, only: string | undefined): F
 	const wanted = new Set(splitList(only))
 	const unknown = [...wanted].filter(name => !ws.manifest.apps[name])
 
-	if (unknown.length) fail(`Unknown app(s) in --only: ${unknown.join(', ')}`)
+	if (unknown.length)
+		throw new CliError(
+			`Unknown app(s) in --only: ${unknown.join(', ')}. Check the names in spool.json.`,
+			'APP_NOT_FOUND',
+		)
 
 	const appPaths = Object.entries(ws.manifest.apps).map(
 		([name, app]) => [name, `${app.path}/`] as const,
@@ -114,15 +114,16 @@ async function regenerateViteConfigs(ws: Workspace, provenance: Provenance): Pro
 		const dir = join(ws.root, app.path)
 		if (!existsSync(dir)) continue
 
-		const generated = await formatFiles(appConfigFiles(name, app, true), ws.root)
-		await writer.replaceGenerated(dir, 'vite.config.ts', generated['vite.config.ts']!, name)
+		const source = await formatFile('vite.config.ts', viteConfig(name, app, true), ws.root)
+
+		await writer.replaceGenerated(dir, 'vite.config.ts', source, name)
 	}
 }
 
 /*
  *   STEPS
  ***************************************************************************************************/
-async function resolveNames(entries: string[], ws: Workspace): Promise<AddonName[] | null> {
+async function resolveNames(entries: string[], ws: Workspace): Promise<AddonName[]> {
 	if (entries.length) return parseAddonList(entries.join(','), ws.manifest)
 
 	const available: AddonName[] = []
@@ -158,38 +159,51 @@ function wantedAppDeps(ws: Workspace, app: Workspace['manifest']['apps'][string]
 
 async function declareAppDeps(ws: Workspace): Promise<void> {
 	for (const [name, app] of Object.entries(ws.manifest.apps)) {
-		const wanted = wantedAppDeps(ws, app)
-		if (!wanted.length) continue
-
-		const target = join(ws.root, app.path, 'package.json')
-		if (!existsSync(target)) continue
-
-		let pkg: PackageJsonShape
-		try {
-			pkg = JSON.parse(await readFile(target, 'utf8')) as PackageJsonShape
-		} catch {
-			log.warn(
-				`${name}: package.json could not be parsed; declare ${wanted.map(([dep]) => dep).join(', ')} in it yourself.`,
-			)
-			continue
-		}
-
-		pkg.dependencies ??= {}
-		pkg.devDependencies ??= {}
-		const changed: string[] = []
-		for (const [dep, range, section] of wanted) {
-			const home = dependencyHome(pkg, dep, section)
-			if (home[dep] !== range) {
-				changed.push(`${dep} ${home[dep] ?? 'added'} -> ${range}`)
-				home[dep] = range
-			}
-		}
-		if (!changed.length) continue
-
-		const formatted = await formatFiles({ 'package.json': `${JSON.stringify(pkg)}\n` }, ws.root)
-		await writeFile(target, formatted['package.json']!, 'utf8')
-		log.step(`${name}: updated package.json (${changed.join(', ')})`)
+		await declareDepsFor(ws, name, app)
 	}
+}
+
+async function declareDepsFor(
+	ws: Workspace,
+	name: string,
+	app: Workspace['manifest']['apps'][string],
+): Promise<void> {
+	const wanted = wantedAppDeps(ws, app)
+	const target = join(ws.root, app.path, 'package.json')
+
+	if (!wanted.length || !existsSync(target)) return
+
+	let pkg: PackageJsonShape
+	try {
+		pkg = JSON.parse(await readFile(target, 'utf8')) as PackageJsonShape
+	} catch {
+		log.warn(
+			`${name}: package.json could not be parsed; declare ${wanted.map(([dep]) => dep).join(', ')} in it yourself.`,
+		)
+		return
+	}
+
+	pkg.dependencies ??= {}
+	pkg.devDependencies ??= {}
+
+	const changed: string[] = []
+
+	for (const [dep, range, section] of wanted) {
+		const home = dependencyHome(pkg, dep, section)
+		if (home[dep] === range) continue
+
+		changed.push(`${dep} ${home[dep] ?? 'added'} -> ${range}`)
+		home[dep] = range
+	}
+
+	if (!changed.length) return
+
+	await writeFile(
+		target,
+		await formatFile('package.json', `${JSON.stringify(pkg)}\n`, ws.root),
+		'utf8',
+	)
+	log.step(`${name}: updated package.json (${changed.join(', ')})`)
 }
 
 /** Adds missing entries to the pnpm build-script allowlist. */
@@ -211,9 +225,8 @@ async function allowPnpmBuilds(ws: Workspace, builds: string[]): Promise<void> {
 		log.warn(`pnpm-workspace.yaml has no allowBuilds/onlyBuiltDependencies sections. ${manual}`)
 		return
 	}
-	// Formatting the patch keeps both write paths on prettier's yaml style.
-	const formatted = await formatFiles({ 'pnpm-workspace.yaml': patched }, ws.root)
-	await writeFile(target, formatted['pnpm-workspace.yaml']!, 'utf8')
+	// pnpm rewrites this file itself, so it is prettier-ignored and kept in the file's own style.
+	await writeFile(target, patched, 'utf8')
 	log.step(`allowed postinstall scripts for ${missing.join(', ')} in pnpm-workspace.yaml`)
 }
 

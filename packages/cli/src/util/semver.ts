@@ -4,7 +4,7 @@
 /** Major, minor, patch. */
 export type Version = [number, number, number]
 
-const SIMPLE_RANGE = /^(?:\^|~|>=|>|=)?\s*v?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z-.]+)?$/
+const SIMPLE_RANGE = /^(?:\^|~|>=|>|=)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+][0-9A-Za-z-.]+)?$/
 
 export function compareVersions(a: Version, b: Version): number {
 	return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
@@ -18,7 +18,11 @@ export function rangeFloor(range: string): Version | null {
 		const match = SIMPLE_RANGE.exec(alternative.trim())
 		if (!match) return null
 
-		const version: Version = [+match[1]!, +match[2]!, +match[3]!]
+		const version: Version = [
+			Number(match[1] ?? 0),
+			Number(match[2] ?? 0),
+			Number(match[3] ?? 0),
+		]
 		if (!lowest || compareVersions(version, lowest) < 0) lowest = version
 	}
 

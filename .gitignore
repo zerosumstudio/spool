@@ -16,3 +16,6 @@ playwright-report/
 # Copied from the repo root by the release workflow and prepublishOnly
 packages/cli/README.md
 packages/cli/LICENSE
+
+# Generated workspaces the lint test writes
+.spool-lint*/

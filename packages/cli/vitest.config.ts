@@ -12,7 +12,10 @@ export default defineConfig({
 		environment: 'node',
 		setupFiles: ['./src/__tests__/setup.ts'],
 		include: ['src/**/*.{test,spec}.ts'],
-		exclude: [...configDefaults.exclude, '**/*.integration.test.ts'],
+		// `*.spawn.test.ts` starts real child processes; it runs only on request, never by default
+		exclude: [...configDefaults.exclude, '**/*.spawn.test.ts'],
+		pool: 'forks',
+		maxWorkers: 2,
 		clearMocks: true,
 		restoreMocks: true,
 		coverage: {

@@ -3,8 +3,14 @@
  ***************************************************************************************************/
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { emitRemoteTypes, exposeDeclarationPath, typesOutDir } from '../../core/types.js'
+import {
+	emitRemoteTypes,
+	exposeDeclarationPath,
+	resolveTsc,
+	typesOutDir,
+} from '../../core/types.js'
 import { freshDir, removeDir, host, remote, makeManifest } from '../helpers.js'
 
 /*
@@ -57,6 +63,29 @@ describe('typesOutDir / exposeDeclarationPath', () => {
 /*
  *   EMIT
  ***************************************************************************************************/
+describe('resolveTsc', () => {
+	it('finds the typescript the workspace installed', () => {
+		plantFakeTypescript()
+
+		expect(resolveTsc(root)).toBe(join(root, 'node_modules', 'typescript', 'bin', 'tsc'))
+	})
+
+	it('finds it in a parent folder, as a hoisted install would', () => {
+		plantFakeTypescript()
+		const nested = join(root, 'apps', 'shell')
+		mkdirSync(nested, { recursive: true })
+
+		expect(resolveTsc(nested)).toBe(join(root, 'node_modules', 'typescript', 'bin', 'tsc'))
+	})
+
+	it('never falls back to a typescript the CLI itself can load, through NODE_PATH or otherwise', () => {
+		// The CLI has its own typescript. A workspace with none must not borrow it.
+		expect(createRequire(import.meta.url).resolve('typescript/bin/tsc')).toBeTruthy()
+
+		expect(resolveTsc(root)).toBeUndefined()
+	})
+})
+
 describe('emitRemoteTypes', () => {
 	it('skips cleanly when the workspace has no typescript installed', async () => {
 		const m = makeManifest({ dashboard: remote() })

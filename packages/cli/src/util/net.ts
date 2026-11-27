@@ -2,23 +2,29 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { spawnSync } from 'node:child_process'
+import { setTimeout as delay } from 'node:timers/promises'
+import { log } from './logger.js'
+import { system32Tool } from './system.js'
 
 /*
  *   PLATFORM
  ***************************************************************************************************/
 const isWindows = process.platform === 'win32'
 
-const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+/** How long one manifest probe may take, and how long a remote gets to serve its first one. */
+const DEFAULT_PROBE_TIMEOUT_MS = 2_000
+export const DEFAULT_REMOTE_TIMEOUT_MS = 20_000
+const DEFAULT_POLL_INTERVAL_MS = 200
 
 /*
  *   MANIFEST READINESS
  ***************************************************************************************************/
 async function canFetch(url: string): Promise<boolean> {
 	try {
-		const res = await fetch(url, { signal: AbortSignal.timeout(2_000) })
+		const response = await fetch(url, { signal: AbortSignal.timeout(DEFAULT_PROBE_TIMEOUT_MS) })
 		// Drain the body so the socket is released promptly.
-		await res.body?.cancel()
-		return res.ok
+		await response.body?.cancel()
+		return response.ok
 	} catch {
 		return false
 	}
@@ -39,7 +45,11 @@ export interface WaitForManifestOptions {
  */
 export async function waitForManifest(
 	url: string,
-	{ timeoutMs = 20_000, intervalMs = 200, signal }: WaitForManifestOptions = {},
+	{
+		timeoutMs = DEFAULT_REMOTE_TIMEOUT_MS,
+		intervalMs = DEFAULT_POLL_INTERVAL_MS,
+		signal,
+	}: WaitForManifestOptions = {},
 ): Promise<void> {
 	const deadline = Date.now() + timeoutMs
 	while (Date.now() < deadline) {
@@ -65,9 +75,9 @@ export function parseNetstatOwner(output: string, port: number): PortOwner | und
 		const parts = line.trim().split(/\s+/)
 		if (parts.length < 4 || parts[0] !== 'TCP' || parts[3] !== 'LISTENING') continue
 
-		const local = parts[1]!
+		const local = parts[1]
 
-		if (!local.endsWith(needle)) continue
+		if (local === undefined || !local.endsWith(needle)) continue
 
 		const pid = Number(parts[parts.length - 1])
 		if (Number.isInteger(pid)) return { pid }
@@ -93,14 +103,33 @@ export function parseLsofOwner(output: string): PortOwner | undefined {
 	return command === undefined ? { pid } : { pid, command }
 }
 
-export async function portOwner(port: number): Promise<PortOwner | undefined> {
+const NETSTAT_HEADER = /\bProto\b/
+let warnedAboutPortTable = false
+
+/** A port check that cannot read the table must not look like a port that is free. */
+function warnPortTable(status: number | null): void {
+	if (warnedAboutPortTable) return
+
+	warnedAboutPortTable = true
+	log.warn(
+		`could not read the port table (netstat exited ${status ?? 'without a status'}), so port checks are skipped.`,
+	)
+}
+
+export function portOwner(port: number): Promise<PortOwner | undefined> {
 	if (isWindows) {
-		const result = spawnSync('netstat', ['-ano'], { encoding: 'utf8' })
-		return result.status === 0 ? parseNetstatOwner(result.stdout, port) : undefined
+		const result = spawnSync(system32Tool('netstat.exe'), ['-ano'], { encoding: 'utf8' })
+
+		if (result.status !== 0 || !NETSTAT_HEADER.test(result.stdout)) {
+			warnPortTable(result.status)
+			return Promise.resolve(undefined)
+		}
+
+		return Promise.resolve(parseNetstatOwner(result.stdout, port))
 	}
 
 	const result = spawnSync('lsof', [`-iTCP:${port}`, '-sTCP:LISTEN', '-P', '-n'], {
 		encoding: 'utf8',
 	})
-	return result.status === 0 ? parseLsofOwner(result.stdout) : undefined
+	return Promise.resolve(result.status === 0 ? parseLsofOwner(result.stdout) : undefined)
 }

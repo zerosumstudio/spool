@@ -1,13 +1,18 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import pc from 'picocolors'
+import { style } from '../util/style.js'
 import { log } from '../util/logger.js'
 
 /*
  *   DEV OUTPUT
  ***************************************************************************************************/
-export const COLORS = [pc.cyan, pc.magenta, pc.green, pc.yellow, pc.blue, pc.red]
+const COLORS = [style.cyan, style.magenta, style.green, style.yellow, style.blue, style.red]
+
+/** The colour for the nth app, wrapping round once there are more apps than colours. */
+export function pickColor(index: number): (text: string) => string {
+	return COLORS[index % COLORS.length] ?? style.cyan
+}
 
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1B\[[0-9;?]*[a-zA-Z]/g
@@ -37,6 +42,9 @@ export interface TrackMeta {
 
 /** Startup chatter is capped per app; a crash or slow start flushes what is kept. */
 const BUFFER_CAP = 400
+
+/** How long to wait after every app is ready, so the tail of vite's banner lands before the summary. */
+const SUMMARY_GRACE_MS = 200
 
 export type ServeMode = 'dev' | 'preview'
 
@@ -122,14 +130,18 @@ export class DevOutput {
 		const plain = line.replace(ANSI, '')
 		const ready = plain.match(/VITE v([\d.]+)\s+ready in (\d+) ?ms/i)
 
-		if (ready) {
-			status.viteVersion = ready[1]!
-			status.readyMs = ready[2]!
+		const [, viteVersion, readyMs] = ready ?? []
+
+		if (viteVersion !== undefined && readyMs !== undefined) {
+			status.viteVersion = viteVersion
+			status.readyMs = readyMs
 		}
 
 		const local = plain.match(/Local:\s+(http\S+)/)
 
-		if (local) status.url = local[1]!
+		const [, localUrl] = local ?? []
+
+		if (localUrl !== undefined) status.url = localUrl
 		else if (status.readyOnUrl && status.url === undefined) {
 			const any = plain.match(/https?:\/\/\S+/)
 
@@ -153,7 +165,7 @@ export class DevOutput {
 
 	private drain(status: AppStatus): void {
 		if (status.dropped) {
-			this.write(status, pc.dim(`(${status.dropped} earlier line(s) truncated)`), false)
+			this.write(status, style.dim(`(${status.dropped} earlier line(s) truncated)`), false)
 		}
 
 		for (const { line, err } of status.buffer) this.write(status, line, err)
@@ -170,7 +182,7 @@ export class DevOutput {
 		clearTimeout(this.pending)
 
 		if (this.anchored) {
-			const rows = process.stdout.rows ?? 0
+			const rows = process.stdout.rows
 			this.unanchor()
 
 			process.stdout.write(`${rows ? `\x1b[${rows};1H` : ''}\n`)
@@ -208,7 +220,7 @@ export class DevOutput {
 				status.buffer = []
 				status.tail = ''
 			}
-		}, 200)
+		}, SUMMARY_GRACE_MS)
 	}
 
 	private startStreaming(): void {
@@ -253,16 +265,17 @@ export class DevOutput {
 		}
 
 		type Cell = (typeof cells)[number]
-		const segments = (cell: Cell): string[] => [
+		const segments = (cell: Cell): [string, string, string, string] => [
 			`  ● ${cell.name.padEnd(width.name)}`,
 			`  ${cell.role.padEnd(width.role)}`,
 			`  ${cell.url.padEnd(width.url)}`,
 			`  ${cell.meta.padEnd(width.meta)}  `,
 		]
-		const inner = segments(cells[0]!).join('').length
+		const [firstCell] = cells
+		const inner = firstCell === undefined ? 0 : segments(firstCell).join('').length
 		const colored = (cell: Cell): string => {
 			const [name, role, url, meta] = segments(cell)
-			return `${cell.status.color(name!)}${pc.dim(role!)}${pc.cyan(url!)}${pc.dim(meta!)}`
+			return `${cell.status.color(name)}${style.dim(role)}${style.cyan(url)}${style.dim(meta)}`
 		}
 
 		const title = this.mode === 'dev' ? ' dev servers ready ' : ' preview servers ready '
@@ -276,16 +289,16 @@ export class DevOutput {
 			.join(' · ')
 
 		this.panel = [
-			`  ${pc.dim('╭─')}${pc.bold(title)}${pc.dim(`${'─'.repeat(fill)}╮`)}`,
-			...cells.map(cell => `  ${pc.dim('│')}${colored(cell)}${pc.dim('│')}`),
-			`  ${pc.dim(`╰${'─'.repeat(inner)}╯`)}`,
-			`  ${pc.dim(footer)}`,
+			`  ${style.dim('╭─')}${style.bold(title)}${style.dim(`${'─'.repeat(fill)}╮`)}`,
+			...cells.map(cell => `  ${style.dim('│')}${colored(cell)}${style.dim('│')}`),
+			`  ${style.dim(`╰${'─'.repeat(inner)}╯`)}`,
+			`  ${style.dim(footer)}`,
 		]
 
 		const fits =
 			process.stdout.isTTY &&
-			(process.stdout.columns ?? 0) >= inner + 4 &&
-			(process.stdout.rows ?? 0) > this.panel.length + 4
+			process.stdout.columns >= inner + 4 &&
+			process.stdout.rows > this.panel.length + 4
 
 		if (fits) {
 			this.anchored = true
@@ -301,7 +314,7 @@ export class DevOutput {
 
 	/** Draws the panel at the top and confines scrolling to the rows below it. */
 	private paint(initial = false): void {
-		const rows = process.stdout.rows ?? 0
+		const rows = process.stdout.rows
 		const top = this.panel.length + 2
 
 		if (!rows || rows <= top + 2) {

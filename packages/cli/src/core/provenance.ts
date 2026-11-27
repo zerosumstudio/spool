@@ -51,7 +51,7 @@ export class Provenance {
 
 	private constructor(
 		private readonly root: string,
-		private readonly files: Record<string, string>,
+		private readonly files: Map<string, string>,
 		private readonly owned: Set<string>,
 	) {}
 
@@ -59,15 +59,19 @@ export class Provenance {
 	static load(root: string): Provenance {
 		const target = join(root, PROVENANCE_FILE)
 
-		if (!existsSync(target)) return new Provenance(root, {}, new Set())
+		if (!existsSync(target)) return new Provenance(root, new Map(), new Set())
 
 		try {
 			const parsed = JSON.parse(readFileSync(target, 'utf8')) as ProvenanceFile
-			if (parsed.version !== FORMAT) return new Provenance(root, {}, new Set())
+			if (parsed.version !== FORMAT) return new Provenance(root, new Map(), new Set())
 
-			return new Provenance(root, { ...parsed.files }, new Set(parsed.owned ?? []))
+			return new Provenance(
+				root,
+				new Map(Object.entries(parsed.files)),
+				new Set(parsed.owned ?? []),
+			)
 		} catch {
-			return new Provenance(root, {}, new Set())
+			return new Provenance(root, new Map(), new Set())
 		}
 	}
 
@@ -76,7 +80,7 @@ export class Provenance {
 
 		if (this.owned.has(key)) return 'owned'
 
-		const stored = this.files[key]
+		const stored = this.files.get(key)
 
 		if (stored === undefined) return 'unknown'
 
@@ -89,7 +93,7 @@ export class Provenance {
 		if (this.owned.has(key)) return
 
 		this.owned.add(key)
-		delete this.files[key]
+		this.files.delete(key)
 		this.dirty = true
 	}
 
@@ -98,37 +102,34 @@ export class Provenance {
 		const hash = hashContent(content)
 
 		if (this.owned.delete(key)) this.dirty = true
-		if (this.files[key] === hash) return
+		if (this.files.get(key) === hash) return
 
-		this.files[key] = hash
+		this.files.set(key, hash)
 		this.dirty = true
 	}
 
 	entries(): [string, string][] {
-		return Object.entries(this.files)
+		return [...this.files]
 	}
 
 	tracks(rootRelativePath: string): boolean {
 		const key = rootRelativePath.split(sep).join('/')
-		return key in this.files || this.owned.has(key)
+		return this.files.has(key) || this.owned.has(key)
 	}
 
 	forget(dir: string, rel: string): void {
 		const key = this.key(dir, rel)
 		if (this.owned.delete(key)) this.dirty = true
-		if (key in this.files) {
-			delete this.files[key]
-			this.dirty = true
-		}
+		if (this.files.delete(key)) this.dirty = true
 	}
 
 	forgetPrefix(prefix: string): void {
 		const base = prefix.split(sep).join('/').replace(/\/$/, '')
 		const matches = (key: string): boolean => key === base || key.startsWith(`${base}/`)
 
-		for (const key of Object.keys(this.files)) {
+		for (const key of [...this.files.keys()]) {
 			if (!matches(key)) continue
-			delete this.files[key]
+			this.files.delete(key)
 			this.dirty = true
 		}
 		for (const key of [...this.owned]) {
@@ -151,10 +152,11 @@ export class Provenance {
 			this.owned.add(to)
 			this.dirty = true
 		}
-		if (from in this.files) {
-			this.files[to] = this.files[from]!
+		const moved = this.files.get(from)
 
-			delete this.files[from]
+		if (moved !== undefined) {
+			this.files.set(to, moved)
+			this.files.delete(from)
 			this.dirty = true
 		}
 	}
@@ -162,9 +164,9 @@ export class Provenance {
 	/** Drops records for files no longer on disk, so a deleted file stops
 	 * showing up as "generated but untracked" if something re-creates it by hand. */
 	pruneMissing(root: string): void {
-		for (const key of Object.keys(this.files)) {
+		for (const key of [...this.files.keys()]) {
 			if (!existsSync(join(root, key))) {
-				delete this.files[key]
+				this.files.delete(key)
 				this.dirty = true
 			}
 		}
@@ -180,9 +182,7 @@ export class Provenance {
 			version: FORMAT,
 			writtenBy: CLI_VERSION,
 			// Sorted so committing this file produces a readable diff.
-			files: Object.fromEntries(
-				Object.entries(this.files).sort(([a], [b]) => a.localeCompare(b)),
-			),
+			files: Object.fromEntries([...this.files].sort(([a], [b]) => a.localeCompare(b))),
 			...(this.owned.size ? { owned: [...this.owned].sort() } : {}),
 		}
 

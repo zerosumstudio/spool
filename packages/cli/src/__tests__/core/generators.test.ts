@@ -4,7 +4,9 @@
 import { describe, it, expect } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { workspaceFiles, appFiles, headersFile, hostWiringFiles } from '../../core/generators.js'
+import { workspaceFiles, appFiles, hostWiringFiles } from '../../core/generators.js'
+import { rootDevDependencies } from '../../core/versions.js'
+import { federationFiles } from '../../core/templates/composition.js'
 import { ciWorkflows } from '../../core/templates/workflows.js'
 import { NO_EXTRAS } from '../../core/templates/index.js'
 import { parseManifest, type Manifest } from '../../core/config.js'
@@ -31,12 +33,12 @@ describe('workspaceFiles', () => {
 				'.gitattributes',
 				'.gitignore',
 				'.prettierignore',
+				'.nvmrc',
 				'.prettierrc',
 				'README.md',
 				'package.json',
 				'pnpm-workspace.yaml',
 				'spool.json',
-				'spool.vite.ts',
 				'spool.workspace.ts',
 				'tsconfig.base.json',
 				'tsconfig.json',
@@ -58,12 +60,10 @@ describe('workspaceFiles', () => {
 		expect(files['.gitattributes']).toBe('* text=auto eol=lf\n')
 	})
 
-	it('ships the runtime helper that reads spool.json at config load time', () => {
-		const helper = files['spool.vite.ts']!
-		expect(helper).toContain('export function spoolApp')
-		expect(helper).toContain('spool.json')
-		expect(helper).toContain('SPOOL_REMOTE_')
-		expect(helper).toContain('mf-manifest.json')
+	it('generates no vite helper: it ships as @zerosumstudio/spool/vite', () => {
+		expect(files['spool.vite.ts']).toBeUndefined()
+		expect(files['spool.workspace.ts']).toContain('spool.json')
+		expect(JSON.parse(files['tsconfig.json']!).include).toEqual(['spool.workspace.ts'])
 	})
 
 	it('writes spool.json as the manifest', () => {
@@ -71,19 +71,19 @@ describe('workspaceFiles', () => {
 	})
 
 	it('emits valid JSON for every json file', () => {
-		for (const name of ['spool.json', 'package.json', 'tsconfig.base.json', '.prettierrc']) {
+		for (const name of ['spool.json', 'package.json', 'tsconfig.base.json']) {
 			expect(() => JSON.parse(files[name]!)).not.toThrow()
 		}
 	})
 
 	it('ships the house prettier config', () => {
-		const prettier = JSON.parse(files['.prettierrc']!)
-		expect(prettier).toMatchObject({
-			useTabs: true,
-			semi: false,
-			singleQuote: true,
-			tabWidth: 4,
-		})
+		const rc = files['.prettierrc']!
+
+		expect(rc).toContain('useTabs: true\n')
+		expect(rc).toContain('semi: false\n')
+		expect(rc).toContain('singleQuote: true\n')
+		expect(rc).toContain('tabWidth: 4\n')
+		expect(rc).toContain('trailingComma: all\n')
 	})
 
 	it('allows the esbuild build script for both pnpm 10 and 11', () => {
@@ -104,6 +104,15 @@ describe('workspaceFiles', () => {
 		expect(files['README.md']).toContain('# acme')
 	})
 
+	it('tells the reader what the readme can no longer leave implicit', () => {
+		const readme = files['README.md']
+
+		expect(readme).toContain('Requires Node 26 or newer.')
+		expect(readme).toContain('`deployEnv` in `spool.json`, then rerun `spool ci --force`')
+		expect(readme).toContain('Commit `.spool/generated.json`')
+		expect(readme).toContain('spool eject')
+	})
+
 	it('uses pnpm-workspace.yaml and a pnpm install hint for pnpm', () => {
 		expect(files['pnpm-workspace.yaml']).toBeDefined()
 		expect(JSON.parse(files['package.json']!).workspaces).toBeUndefined()
@@ -122,6 +131,7 @@ describe.each(['npm', 'yarn'] as const)('workspaceFiles (%s)', pm => {
 	const files = workspaceFiles(
 		parseManifest({
 			name: 'acme',
+			version: 2,
 			packageManager: pm,
 			apps: { shell: host({ remotes: ['dashboard'] }), dashboard: remote() },
 		}),
@@ -144,6 +154,7 @@ describe('workspaceFiles (yarn)', () => {
 	const files = workspaceFiles(
 		parseManifest({
 			name: 'acme',
+			version: 2,
 			packageManager: 'yarn',
 			apps: { shell: host() },
 		}),
@@ -160,8 +171,10 @@ describe('workspaceFiles (yarn)', () => {
 	})
 
 	it('does not emit a yarnrc for npm or pnpm', () => {
-		const npm = workspaceFiles(parseManifest({ name: 'acme', packageManager: 'npm', apps: {} }))
-		const pnpm = workspaceFiles(parseManifest({ name: 'acme', apps: {} }))
+		const npm = workspaceFiles(
+			parseManifest({ name: 'acme', version: 2, packageManager: 'npm', apps: {} }),
+		)
+		const pnpm = workspaceFiles(parseManifest({ name: 'acme', version: 2, apps: {} }))
 		expect(npm['.yarnrc.yml']).toBeUndefined()
 		expect(pnpm['.yarnrc.yml']).toBeUndefined()
 	})
@@ -179,11 +192,11 @@ describe('appFiles (host)', () => {
 			[
 				'index.html',
 				'package.json',
-				'public/_headers',
 				'src/app/app.module.css',
 				'src/app/app.tsx',
 				'src/main.tsx',
 				'src/remotes.d.ts',
+				...Object.keys(federationFiles(m, m.apps.shell!)),
 				'src/vite-env.d.ts',
 				'tsconfig.json',
 				'vite.config.ts',
@@ -191,32 +204,30 @@ describe('appFiles (host)', () => {
 		)
 	})
 
-	it('reads its wiring from the runtime helper instead of baking it in', () => {
-		expect(files['vite.config.ts']).toContain('spoolApp("shell"')
-		expect(files['vite.config.ts']).toContain('from "../../spool.vite"')
+	it('reads its wiring from the spool/vite entry instead of baking it in', () => {
+		expect(files['vite.config.ts']).toContain(
+			"spoolApp('shell', { root: import.meta.dirname, command })",
+		)
+		expect(files['vite.config.ts']).toContain("from '@zerosumstudio/spool/vite'")
+		expect(files['vite.config.ts']).not.toContain('spool.vite')
+		expect(files['vite.config.ts']).toContain('app.plugin')
 		// No generated federation config that could drift from spool.json.
 		expect(files['vite.config.ts']).not.toContain('localhost')
 		expect(files['vite.config.ts']).not.toContain('remotes:')
 	})
 
-	it('ships the CSP and nosniff, but no CORS, since nothing fetches a host cross-origin', () => {
-		const headers = files['public/_headers']!
-		expect(headers).toContain('X-Content-Type-Options: nosniff')
-		expect(headers).toContain("Content-Security-Policy: frame-ancestors 'self'")
-		expect(headers).not.toContain('Access-Control-Allow-Origin')
-	})
-
-	it('lazy-imports each remote in app.tsx', () => {
-		expect(files['src/app/app.tsx']).toContain('import("dashboard/App")')
-		expect(files['src/app/app.tsx']).toContain('lazy(')
+	it('renders each remote through <Remote> in app.tsx', () => {
+		expect(files['src/app/app.tsx']).toContain("import { Remote } from '@/federation'")
+		expect(files['src/app/app.tsx']).toContain('<Remote name="dashboard"')
+		expect(files['src/app/app.tsx']).not.toContain('lazy(')
 	})
 
 	it('declares ambient modules for the remotes', () => {
-		expect(files['src/remotes.d.ts']).toContain('declare module "dashboard/App"')
+		expect(files['src/remotes.d.ts']).toContain("declare module 'dashboard/App'")
 	})
 
 	it('locks the build target for top-level await', () => {
-		expect(files['vite.config.ts']).toContain('target: "esnext"')
+		expect(files['vite.config.ts']).toContain("target: 'esnext'")
 	})
 })
 
@@ -231,9 +242,9 @@ describe('appFiles (host with no remotes)', () => {
 		expect(files['src/remotes.d.ts']).toBeUndefined()
 	})
 
-	it('leaves a hint in app.tsx', () => {
-		expect(files['src/app/app.tsx']).toContain('No remotes wired yet')
-		expect(files['src/app/app.tsx']).toContain('spool add')
+	it('says so in app.tsx, and imports nothing it does not use', () => {
+		expect(files['src/app/app.tsx']).toContain('No remotes mounted yet')
+		expect(files['src/app/app.tsx']).not.toContain('@/federation')
 	})
 })
 
@@ -244,28 +255,18 @@ describe('appFiles (remote)', () => {
 	const m = manifest()
 	const files = appFiles(m, 'dashboard', m.apps.dashboard!)
 
-	it('derives its exposes from the manifest at startup', () => {
-		expect(files['vite.config.ts']).toContain('spoolApp("dashboard"')
-		expect(files['src/remotes.d.ts']).toBeUndefined()
+	it('writes no public/_headers: the vite plugin emits it at build', () => {
+		expect(files['public/_headers']).toBeUndefined()
 	})
 
-	it('ships CORS only on the federation paths, and caching on the right ones', () => {
-		const headers = files['public/_headers']!
-		expect(headers).toContain(
-			'/mf-manifest.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache',
-		)
-		expect(headers).toContain(
-			'/remoteEntry.js\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache',
-		)
-		expect(headers).toContain(
-			'/assets/*\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=31536000, immutable',
-		)
-		expect(headers).toContain('/*\n  X-Content-Type-Options: nosniff')
+	it('derives its exposes from the manifest at startup', () => {
+		expect(files['vite.config.ts']).toContain("spoolApp('dashboard'")
+		expect(files['src/remotes.d.ts']).toBeUndefined()
 	})
 
 	it('passes the vite command through so deployed urls only apply to builds', () => {
 		expect(files['vite.config.ts']).toContain('({ command })')
-		expect(files['vite.config.ts']).toContain('command)')
+		expect(files['vite.config.ts']).toContain('root: import.meta.dirname, command')
 	})
 
 	it('pins the modern federation toolchain', () => {
@@ -273,33 +274,6 @@ describe('appFiles (remote)', () => {
 		expect(pkg.devDependencies.vite).toBe('^8.0.0')
 		expect(pkg.devDependencies['@vitejs/plugin-react']).toBe('^6.0.0')
 		expect(pkg.devDependencies['@module-federation/vite']).toBe('^1.16.0')
-	})
-})
-
-/*
- *   HEADERS
- ***************************************************************************************************/
-describe('headersFile', () => {
-	it('defaults frame-ancestors to self', () => {
-		expect(headersFile('shell', host())).toContain("frame-ancestors 'self'")
-	})
-
-	it('quotes the self and none tokens, and writes an origin as-is', () => {
-		const value = headersFile(
-			'shell',
-			host({ frameAncestors: ['self', 'none', 'https://a.test'] }),
-		)
-		expect(value).toContain("frame-ancestors 'self' 'none' https://a.test")
-	})
-
-	it('appends the app’s own headers to the catch-all block', () => {
-		const value = headersFile('shell', host({ headers: { 'X-Frame-Options': 'DENY' } }))
-		expect(value).toContain('X-Frame-Options: DENY')
-	})
-
-	it('never adds CORS to a host, only to a remote', () => {
-		expect(headersFile('shell', host())).not.toContain('Access-Control-Allow-Origin')
-		expect(headersFile('dashboard', remote())).toContain('Access-Control-Allow-Origin: *')
 	})
 })
 
@@ -340,16 +314,21 @@ describe('remotes.d.ts: typed vs fallback', () => {
  *   HOST WIRING FILES
  ***************************************************************************************************/
 describe('hostWiringFiles', () => {
-	it('regenerates only the typings when a host has remotes', () => {
+	it('regenerates the typings and the federation files when a host has remotes', () => {
 		const m = manifest()
 		const files = hostWiringFiles(m, m.apps.shell!)
-		expect(Object.keys(files)).toEqual(['src/remotes.d.ts'])
-		expect(files['src/remotes.d.ts']).toContain('declare module "dashboard/App"')
+		expect(Object.keys(files)).toEqual([
+			'src/remotes.d.ts',
+			...Object.keys(federationFiles(m, m.apps.shell!)),
+		])
+		expect(files['src/remotes.d.ts']).toContain("declare module 'dashboard/App'")
 	})
 
-	it('writes nothing when a host has no remotes', () => {
+	it('writes only the federation files when a host has no remotes yet', () => {
 		const m = makeManifest({ shell: host() })
-		expect(hostWiringFiles(m, m.apps.shell!)).toEqual({})
+		expect(Object.keys(hostWiringFiles(m, m.apps.shell!))).toEqual(
+			Object.keys(federationFiles(m, m.apps.shell!)),
+		)
 	})
 
 	it('declares every expose a remote offers, not just App', () => {
@@ -363,8 +342,8 @@ describe('hostWiringFiles', () => {
 			}),
 		})
 		const typings = hostWiringFiles(m, m.apps.shell!)['src/remotes.d.ts']!
-		expect(typings).toContain('declare module "dashboard/App"')
-		expect(typings).toContain('declare module "dashboard/Panel"')
+		expect(typings).toContain("declare module 'dashboard/App'")
+		expect(typings).toContain("declare module 'dashboard/Panel'")
 	})
 
 	it('keeps the registry keyed by App for a remote that only exposes App', () => {
@@ -375,7 +354,7 @@ describe('hostWiringFiles', () => {
 		const typings = hostWiringFiles(m, m.apps.shell!)['src/remotes.d.ts']!
 		expect(typings).toBe(
 			"// Run `spool types` to type this from the remote's real export.\n" +
-				'declare module "dashboard/App" {\n  const Component: React.ComponentType;\n  export default Component;\n}\n',
+				"declare module 'dashboard/App' {\n\tconst Component: React.ComponentType\n\texport default Component\n}\n",
 		)
 	})
 })
@@ -416,7 +395,7 @@ describe('appFiles (svelte remote)', () => {
 	})
 
 	it('lets plain tsc resolve .svelte imports', () => {
-		expect(files['src/vite-env.d.ts']).toContain('declare module "*.svelte"')
+		expect(files['src/vite-env.d.ts']).toContain("declare module '*.svelte'")
 	})
 })
 
@@ -433,10 +412,10 @@ describe('appFiles (react host with a svelte remote)', () => {
 	})
 	const files = appFiles(m, 'shell', m.apps.shell!)
 
-	it('renders react remotes with lazy and mount remotes with a wrapper', () => {
-		expect(files['src/app/app.tsx']).toContain('lazy(() => import("dashboard/App"))')
-		expect(files['src/app/app.tsx']).toContain('function MountRemote')
-		expect(files['src/app/app.tsx']).toContain('<MountRemote load={loadWidget} />')
+	it('renders every remote through <Remote>, whatever its contract', () => {
+		expect(files['src/app/app.tsx']).toContain('<Remote name="dashboard"')
+		expect(files['src/app/app.tsx']).toContain('<Remote name="widget"')
+		expect(files['src/app/app.tsx']).not.toContain('MountRemote')
 	})
 
 	it('types each remote by its contract', () => {
@@ -463,7 +442,8 @@ describe('appFiles (svelte host with a react remote)', () => {
 
 	it('bridges react remotes and ships both frameworks', () => {
 		expect(files['src/react-bridge.ts']).toContain('createRoot')
-		expect(files['src/app/app.svelte']).toContain('mountReact(m.default')
+		expect(files['src/app/app.svelte']).toContain('<Remote name="dashboard">')
+		expect(files['src/app/app.svelte']).not.toContain('mountReact')
 		const pkg = JSON.parse(files['package.json']!)
 		expect(pkg.dependencies.svelte).toBeDefined()
 		expect(pkg.dependencies.react).toBeDefined()
@@ -476,8 +456,9 @@ describe('appFiles (svelte host with a react remote)', () => {
 		expect(pkg.devDependencies['@vitejs/plugin-react']).toBeUndefined()
 	})
 
-	it('guards mounts against unmounting before a remote import resolves', () => {
-		expect(files['src/app/app.svelte']).toContain('cancelled')
+	it('leaves mounting, and its unmount races, to <Remote>', () => {
+		expect(files['src/app/app.svelte']).not.toContain('onMount')
+		expect(files['src/app/app.svelte']).not.toContain('cancelled')
 	})
 })
 
@@ -517,7 +498,7 @@ describe('appFiles (vue remote)', () => {
 	})
 
 	it('lets plain tsc resolve .vue imports', () => {
-		expect(files['src/vite-env.d.ts']).toContain('declare module "*.vue"')
+		expect(files['src/vite-env.d.ts']).toContain("declare module '*.vue'")
 	})
 })
 
@@ -532,9 +513,9 @@ describe('appFiles (react host with a vue remote)', () => {
 	})
 	const files = appFiles(m, 'shell', m.apps.shell!)
 
-	it('mounts the vue remote through the mount contract wrapper', () => {
-		expect(files['src/app/app.tsx']).toContain('function MountRemote')
-		expect(files['src/app/app.tsx']).toContain('<MountRemote load={loadWidget} />')
+	it('mounts the vue remote through <Remote>', () => {
+		expect(files['src/app/app.tsx']).toContain('<Remote name="widget"')
+		expect(files['src/app/app.tsx']).not.toContain('MountRemote')
 	})
 
 	it('needs no vue deps, since mount-contract remotes are self-contained', () => {
@@ -559,8 +540,9 @@ describe('appFiles (vue host with mixed remotes)', () => {
 
 	it('bridges react remotes and mounts contract remotes directly', () => {
 		expect(files['src/react-bridge.ts']).toContain('createRoot')
-		expect(files['src/app/app.vue']).toContain('mountReact(m.default')
-		expect(files['src/app/app.vue']).toContain('import("widget/App")')
+		expect(files['src/app/app.vue']).toContain('<Remote name="dashboard">')
+		expect(files['src/app/app.vue']).toContain('<Remote name="widget">')
+		expect(files['src/app/app.vue']).not.toContain('mountReact')
 	})
 
 	it('ships the react bridge runtime but neither vite plugin nor svelte', () => {
@@ -572,8 +554,9 @@ describe('appFiles (vue host with mixed remotes)', () => {
 		expect(pkg.dependencies.svelte).toBeUndefined()
 	})
 
-	it('guards mounts against unmounting before a remote import resolves', () => {
-		expect(files['src/app/app.vue']).toContain('cancelled')
+	it('leaves mounting, and its unmount races, to <Remote>', () => {
+		expect(files['src/app/app.vue']).not.toContain('onMounted')
+		expect(files['src/app/app.vue']).not.toContain('cancelled')
 	})
 
 	it('types each remote by its contract', () => {
@@ -621,15 +604,17 @@ describe('appFiles (state example extras)', () => {
 
 	it('gives react remotes a counter with a plain button by default', () => {
 		const app = appFiles(m, 'dash', m.apps.dash!, plain)['src/app/app.tsx']!
-		expect(app).toContain('useMachine(counterMachine)')
-		expect(app).toContain('<button onClick={increment}>Increment</button>')
-		expect(app).not.toContain('from "ui"')
+		expect(app).toContain('useStore(counterStore, s => s.count)')
+		expect(app).toContain('<button onClick={handleIncrement}>Increment</button>')
+		expect(app).not.toContain("from 'ui'")
 	})
 
 	it('uses the ladle ui button when both addons are picked', () => {
 		const files = appFiles(m, 'dash', m.apps.dash!, withUi)
-		expect(files['src/app/app.tsx']).toContain('import { Button } from "ui";')
-		expect(files['src/app/app.tsx']).toContain('<Button onClick={increment}>Increment</Button>')
+		expect(files['src/app/app.tsx']).toContain("import { Button } from 'ui'")
+		expect(files['src/app/app.tsx']).toContain(
+			'<Button onClick={handleIncrement}>Increment</Button>',
+		)
 		expect(JSON.parse(files['package.json']!).dependencies.ui).toBe('workspace:*')
 	})
 
@@ -646,34 +631,35 @@ describe('appFiles (state example extras)', () => {
 
 	it('shows the shared count on the host with a stable test id', () => {
 		const app = appFiles(m, 'shell', m.apps.shell!, plain)['src/app/app.tsx']!
-		expect(app).toContain('data-testid="shell-count"')
-		expect(app).toContain('useMachine(counterMachine)')
+		expect(app).toContain('data-testid="shared-count"')
+		expect(app).toContain('useStore(counterStore, s => s.count)')
 	})
 
 	it('wires the counter into svelte and vue remotes with their own syntax', () => {
 		const svelteApp = appFiles(m, 'widget', m.apps.widget!, plain)['src/app/app.svelte']!
-		expect(svelteApp).toContain('counterMachine.mutate')
-		expect(svelteApp).toContain('<button on:click={increment}>Increment</button>')
+		expect(svelteApp).toContain('counterStore.set(s => ({ count: s.count + 1 }))')
+		expect(svelteApp).toContain('<button onclick={handleIncrement}>Increment</button>')
+		expect(svelteApp).toContain('{count}')
 
 		const vueApp = appFiles(m, 'vapp', m.apps.vapp!, plain)['src/app/app.vue']!
-		expect(vueApp).toContain('counterMachine.mutate')
-		expect(vueApp).toContain('<button @click="increment">Increment</button>')
+		expect(vueApp).toContain('counterStore.set(s => ({ count: s.count + 1 }))')
+		expect(vueApp).toContain('<button @click="handleIncrement">Increment</button>')
 	})
 
 	it('shows the shared count on svelte and vue hosts too', () => {
 		const svelteM = makeManifest({ shell: host({ framework: 'svelte' }) })
 		expect(
 			appFiles(svelteM, 'shell', svelteM.apps.shell!, plain)['src/app/app.svelte'],
-		).toContain('data-testid="shell-count"')
+		).toContain('data-testid="shared-count"')
 		const vueM = makeManifest({ shell: host({ framework: 'vue' }) })
 		expect(appFiles(vueM, 'shell', vueM.apps.shell!, plain)['src/app/app.vue']).toContain(
-			'data-testid="shell-count"',
+			'data-testid="shared-count"',
 		)
 	})
 
 	it('changes nothing when no extras are passed', () => {
 		const app = appFiles(m, 'dash', m.apps.dash!)['src/app/app.tsx']!
-		expect(app).not.toContain('counterMachine')
+		expect(app).not.toContain('counterStore')
 		expect(
 			JSON.parse(appFiles(m, 'dash', m.apps.dash!)['package.json']!).dependencies.ui,
 		).toBeUndefined()
@@ -759,17 +745,17 @@ describe('ciWorkflows', () => {
 
 	it('path-filters to the app folder plus the workspace-level files', () => {
 		const yml = files['.github/workflows/deploy-dashboard.yml']!
-		expect(yml).toContain('"apps/dashboard/**"')
-		expect(yml).toContain('"spool.json"')
-		expect(yml).toContain('"spool.vite.ts"')
-		expect(yml).toContain('"pnpm-lock.yaml"')
-		expect(yml).not.toContain('"apps/shell/**"')
+		expect(yml).toContain("'apps/dashboard/**'")
+		expect(yml).toContain("'spool.json'")
+		expect(yml).not.toContain('spool.vite.ts')
+		expect(yml).toContain("'pnpm-lock.yaml'")
+		expect(yml).not.toContain("'apps/shell/**'")
 	})
 
 	it('bakes the deploy command in and builds in the app folder', () => {
 		const yml = files['.github/workflows/deploy-dashboard.yml']!
 		expect(yml).toContain('wrangler pages deploy dist --project-name=dash')
-		expect(yml).toContain('working-directory: "apps/dashboard"')
+		expect(yml).toContain("working-directory: 'apps/dashboard'")
 		expect(yml).toContain('pnpm run build')
 	})
 
@@ -781,12 +767,13 @@ describe('ciWorkflows', () => {
 		const npm = ciWorkflows(
 			parseManifest({
 				name: 'acme',
+				version: 2,
 				packageManager: 'npm',
 				apps: { dash: { ...remote(), deploy: 'x' } },
 			}),
 		)['.github/workflows/deploy-dash.yml']!
 		expect(npm).toContain('npm ci')
-		expect(npm).toContain('"package-lock.json"')
+		expect(npm).toContain("'package-lock.json'")
 		expect(npm).not.toContain('pnpm/action-setup')
 
 		const pnpm = files['.github/workflows/deploy-dashboard.yml']!
@@ -810,11 +797,63 @@ describe('generated content', () => {
 	})
 })
 
-describe('headersFile with an edge-owned frame-ancestors', () => {
-	it('leaves the CSP out and says who sets it', () => {
-		const value = headersFile('embed', host({ frameAncestors: ['edge'] }))
-		expect(value).not.toContain('Content-Security-Policy')
-		expect(value).toContain('set by the edge')
-		expect(value).toContain('X-Content-Type-Options: nosniff')
+/*
+ *   WORKSPACE FILE STYLE AND ROOT NAME
+ ***************************************************************************************************/
+describe('pnpm-workspace.yaml', () => {
+	const yaml = workspaceFiles(manifest(), ['@sentry/cli'])['pnpm-workspace.yaml']!
+
+	it('is written in the 2-space form pnpm re-serialises, so an install leaves it as it was', () => {
+		expect(yaml).toContain("packages:\n  - 'apps/*'\n  - 'packages/*'")
+		expect(yaml).toContain("allowBuilds:\n  '@sentry/cli': true\n  esbuild: true")
+		expect(yaml).not.toMatch(/^ {4}/m)
+	})
+
+	it('is left out of prettier, which would fight pnpm over it', () => {
+		const ignored = workspaceFiles(manifest())['.prettierignore']!.split('\n')
+
+		expect(ignored).toContain('pnpm-workspace.yaml')
+	})
+})
+
+describe('root package name', () => {
+	it.each(['ws', 'typescript', 'eslint', 'acme'])(
+		'never equals the workspace name %s, which pnpm would resolve as a dependency',
+		name => {
+			const files = workspaceFiles(parseManifest({ ...manifest(), name }))
+			const pkg = JSON.parse(files['package.json']!) as { name: string }
+
+			expect(pkg.name).toBe(`${name}-workspace`)
+		},
+	)
+})
+
+/*
+ *   PRETTIER AND SVELTE
+ ***************************************************************************************************/
+describe('.prettierrc and the Svelte plugin', () => {
+	const withApps = (framework: 'react' | 'svelte', addons: string[]): Manifest => {
+		const m = makeManifest({
+			shell: host({ remotes: ['dashboard'], framework }),
+			dashboard: remote({ framework }),
+		})
+
+		m.addons = addons as Manifest['addons']
+
+		return m
+	}
+
+	it('lists prettier-plugin-svelte, and installs it, when a Svelte workspace lints', () => {
+		const m = withApps('svelte', ['lint'])
+
+		expect(workspaceFiles(m)['.prettierrc']).toContain('plugins:\n    - prettier-plugin-svelte')
+		expect(rootDevDependencies(m)).toHaveProperty('prettier-plugin-svelte')
+	})
+
+	it('lists no plugin where nothing would install it', () => {
+		for (const m of [withApps('svelte', []), withApps('react', ['lint'])]) {
+			expect(workspaceFiles(m)['.prettierrc']).not.toContain('plugins')
+			expect(rootDevDependencies(m)).not.toHaveProperty('prettier-plugin-svelte')
+		}
 	})
 })

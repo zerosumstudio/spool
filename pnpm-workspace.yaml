@@ -3,7 +3,6 @@ packages:
 
 allowBuilds:
     esbuild: true
-    node-pty: true
 
 overrides:
     esbuild: '>=0.28.1'

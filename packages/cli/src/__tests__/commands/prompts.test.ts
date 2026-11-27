@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import * as p from '@clack/prompts'
 import { create } from '../../commands/create.js'
 import { run } from '../../util/exec.js'
+import { installInvocation } from '../../util/install-command.js'
 import { freshDir, removeDir } from '../helpers.js'
 
 /*
@@ -160,7 +161,7 @@ describe('create (interactive)', () => {
 			pm: 'pnpm',
 			host: 'shell',
 			remotes: 'dashboard',
-			addons: 'sentry, shell',
+			addons: 'sentry, navigation',
 			here: true,
 		})
 
@@ -216,7 +217,7 @@ describe('create (interactive)', () => {
 	})
 
 	it('skips the addons prompt without a TTY, where it could never resolve', async () => {
-		process.stdin.isTTY = false as never
+		process.stdin.isTTY = false
 
 		await create(undefined, {
 			name: 'acme',
@@ -247,7 +248,9 @@ describe('create (interactive)', () => {
 		vi.mocked(p.isCancel).mockReturnValueOnce(true)
 		vi.mocked(p.text).mockResolvedValueOnce('whatever')
 
-		await create(undefined, { here: true })
+		await expect(create(undefined, { here: true })).rejects.toMatchObject({
+			code: 'CANCELLED',
+		})
 
 		expect(existsSync(join(dir, 'spool.json'))).toBe(false)
 		expect(p.cancel).toHaveBeenCalled()
@@ -266,7 +269,12 @@ describe('create (install)', () => {
 			remotes: 'dashboard',
 			here: true,
 		})
-		expect(run).toHaveBeenCalledWith('pnpm', ['install'], expect.objectContaining({ cwd: dir }))
+		const { command, args, ...options } = installInvocation('pnpm')
+		expect(run).toHaveBeenCalledWith(
+			command,
+			args,
+			expect.objectContaining({ cwd: dir, ...options }),
+		)
 	})
 
 	it('survives a failed install without throwing', async () => {

@@ -1,8 +1,8 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
+import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
-import * as p from '@clack/prompts'
 import { join, resolve, sep } from 'node:path'
 import { requireWorkspace, saveManifest, type Workspace } from '../core/workspace.js'
 import { hostWiringFiles } from '../core/generators.js'
@@ -10,7 +10,12 @@ import { federationFiles } from '../core/templates/composition.js'
 import { formatFiles } from '../core/format.js'
 import { OwnedWriter } from '../core/fswrite.js'
 import { Provenance } from '../core/provenance.js'
-import { log, fail } from '../util/logger.js'
+import { confirmDestructive } from '../util/interactive.js'
+import { assertConfined } from '../util/confine.js'
+import { CliError } from '../util/errors.js'
+import { getApp } from '../core/config.js'
+import { withoutKey } from '../util/json.js'
+import { log } from '../util/logger.js'
 
 /*
  *   TYPES
@@ -27,10 +32,7 @@ export async function remove(name: string, opts: RemoveOptions): Promise<void> {
 	const ws = await requireWorkspace()
 	const { manifest } = ws
 
-	const app = manifest.apps[name]
-	if (!app) {
-		fail(`No app named "${name}" in this workspace. Check the names in spool.json.`)
-	}
+	const app = getApp(manifest, name)
 
 	const appDir = opts.files ? appDirInsideWorkspace(ws, app.path) : undefined
 	if (appDir && !(await confirmDelete(app.path, opts.yes ?? false))) {
@@ -38,7 +40,7 @@ export async function remove(name: string, opts: RemoveOptions): Promise<void> {
 		return
 	}
 
-	delete manifest.apps[name]
+	manifest.apps = withoutKey(manifest.apps, name)
 	const consumers = unwireConsumers(ws, name)
 
 	const provenance = Provenance.load(ws.root)
@@ -67,15 +69,8 @@ export async function remove(name: string, opts: RemoveOptions): Promise<void> {
 /*
  *   HELPERS
  ***************************************************************************************************/
-async function confirmDelete(path: string, yes: boolean): Promise<boolean> {
-	if (yes || !process.stdin.isTTY) return true
-
-	const answer = await p.confirm({
-		message: `Delete ${path} and everything in it?`,
-		initialValue: false,
-	})
-
-	return !p.isCancel(answer) && answer
+function confirmDelete(path: string, yes: boolean): Promise<boolean> {
+	return confirmDestructive(`Delete ${path} and everything in it?`, yes)
 }
 
 interface ConsumerRef {
@@ -105,7 +100,7 @@ async function refreshConsumerTypings(
 	consumer: ConsumerRef,
 	provenance: Provenance,
 ): Promise<void> {
-	const app = ws.manifest.apps[consumer.name]!
+	const app = getApp(ws.manifest, consumer.name)
 	const dir = join(ws.root, consumer.path)
 	const writer = new OwnedWriter(ws.root, false, provenance, false)
 
@@ -117,10 +112,12 @@ async function refreshConsumerTypings(
 		return
 	}
 
+	assertConfined(ws.root, join(dir, 'src/remotes.d.ts'))
 	await rm(join(dir, 'src/remotes.d.ts'), { force: true })
 	provenance.forget(dir, 'src/remotes.d.ts')
 
-	if (!ws.manifest.addons.includes('federation')) return
+	// A host always has a registry; a remote has one only while it consumes remotes.
+	if (app.type !== 'host' && !existsSync(join(dir, 'src/federation/remotes.ts'))) return
 
 	const registry = await formatFiles(federationFiles(ws.manifest, app), ws.root)
 	for (const [rel, content] of Object.entries(registry)) {
@@ -133,12 +130,21 @@ function appDirInsideWorkspace(ws: Workspace, appPath: string): string {
 	const target = resolve(ws.root, appPath)
 
 	if (target !== ws.root && !target.startsWith(ws.root + sep)) {
-		fail(`Refusing to delete "${appPath}": it resolves outside the workspace.`)
+		throw new CliError(
+			`Refusing to delete "${appPath}": it resolves outside the workspace.`,
+			'UNSAFE_PATH',
+		)
 	}
 
 	if (target === ws.root) {
-		fail(`Refusing to delete "${appPath}": it is the workspace root.`)
+		throw new CliError(
+			`Refusing to delete "${appPath}": it is the workspace root.`,
+			'UNSAFE_PATH',
+		)
 	}
+
+	// A link in the path would send the delete somewhere else, and the prompt shows the harmless name.
+	assertConfined(ws.root, target, { allowFinalLink: true })
 
 	return target
 }
