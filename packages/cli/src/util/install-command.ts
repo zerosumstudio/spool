@@ -1,7 +1,7 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import { basename } from 'node:path'
+import { posix, win32 } from 'node:path'
 import type { Invocation } from './bin.js'
 import { commandShell } from './system.js'
 
@@ -29,8 +29,9 @@ export interface InstallEnvironment {
 const MANAGERS: readonly InstallManager[] = ['pnpm', 'npm', 'yarn']
 
 /** `pnpm.cjs`, `npm-cli.js`, `yarn.js`: the manager an `npm_execpath` belongs to. */
-function managerOf(execPath: string): InstallManager | undefined {
-	const file = basename(execPath).toLowerCase()
+function managerOf(execPath: string, platform: NodeJS.Platform): InstallManager | undefined {
+	const paths = platform === 'win32' ? win32 : posix
+	const file = paths.basename(execPath).toLowerCase()
 
 	return MANAGERS.find(
 		manager =>
@@ -55,7 +56,7 @@ export function installInvocation(
 ): InstallInvocation {
 	if (!MANAGERS.includes(pm)) throw new Error(`Unknown package manager ${JSON.stringify(pm)}.`)
 
-	if (env.execPath && managerOf(env.execPath) === pm) {
+	if (env.execPath && managerOf(env.execPath, env.platform) === pm) {
 		return { command: env.nodePath, args: [env.execPath, 'install'] }
 	}
 
