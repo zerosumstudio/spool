@@ -57,22 +57,22 @@ interface LinkClick {
 	ctrlKey: boolean
 	shiftKey: boolean
 	altKey: boolean
-	currentTarget: { pathname: string; search: string; hash: string }
+	currentTarget: EventTarget | null
 	preventDefault(): void
 }
 
 /** The click handler for an `<a href>` that changes the url without a page load. A click that
- * asks the browser for a new tab or window is left to it. */
+ * asks the browser for a new tab or window is left to it. Vue types the event as a plain
+ * `MouseEvent`, so the link is checked here rather than in the type. */
 export function navigateOnClick(event: LinkClick): void {
+	const link = event.currentTarget
 	const isPlainClick =
 		event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
 
-	if (!isPlainClick) return
-
-	const { pathname, search, hash } = event.currentTarget
+	if (!isPlainClick || !(link instanceof HTMLAnchorElement)) return
 
 	event.preventDefault()
-	navigate(`${pathname}${search}${hash}`)
+	navigate(`${link.pathname}${link.search}${link.hash}`)
 }
 
 export function subscribe(listener: () => void): () => void {
