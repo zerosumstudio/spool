@@ -1,18 +1,50 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 - 2026-11-27
+
+First release under `@zerosumstudio`. Everything below is a change from `@bkincz/spool` 4.0.0, and the [migration guide](./docs/migration-1.0.md) opens with a checklist. Run `spool upgrade` first.
 
 ### Breaking
 
-- **Published as `@zerosumstudio/spool`.** The repo moved to
-  [zerosumstudio/spool](https://github.com/zerosumstudio/spool). New workspaces
-  depend on `@zerosumstudio/spool` and the shared state addon uses
-  `@zerosumstudio/clutch`. Existing workspaces keep working on the old names, and the
-  README has the swap steps.
+- **Published as `@zerosumstudio/spool`.** Swap the package name in the root `package.json`, and `@bkincz/clutch` for `@zerosumstudio/clutch` if you use the state addon. Uninstall the old global, since both provide `spool`. `@bkincz/spool` stays on npm at 4.0.0.
+- **Node 26 or newer**, for the CLI and for generated workspaces (`engines >=26`).
+- **`spool.json` is version 2.** `version: 2` is required, and `spool upgrade` migrates version 1: `overrides: true` becomes `{ "origins": [] }`, `server.cors: true` becomes a list of origins, `shell` becomes `navigation`, and `federation`, `rspack` and `svelte` in `shared` are dropped.
+- **The manifest is checked more strictly.** Names, paths, exposes, urls, header names and values, and origins are validated, and Windows device names such as `con` are rejected on every OS.
+- **`@zerosumstudio/spool/vite` replaces `spool.vite.ts` and `public/_headers`.** `spoolApp(name, { root, command })` returns `{ server, federation, plugin }`, and `plugin` writes `dist/_headers` from `spool.json`. Edited vite configs add `app.plugin`. `spool upgrade` removes both generated files when unedited.
+- **`promote`, `rollback` and `affected` are removed.** Check out the commit and run `spool build` and `spool deploy --env`, and use `pnpm --filter "...[<ref>]"` or `turbo --affected` for affected apps.
+- **Flags changed.** `ci --pin` is gone and workflows always pin to commit shas, `upgrade --pin` is `--downgrade`, and `dev --rest <env>` is `--rest env:<env>`.
+- **Exit codes are 0, 1, 2 and 130.** Bad usage exits 2 (it exited 1), and a cancel exits 130 (it exited 0).
+- **`--json` prints one document.** `build`, `deploy`, `doctor` and `graph` print `{ ok, command, ... }` or `{ ok: false, command, error: { code, message } }`, with logs on stderr. `duration` is `durationMs`.
+- **No prompts without a terminal.** `remove --files` and `eject` exit 2 unless you pass `--yes`, `create` needs `--name`, `--host`, `--remotes` and `--pm`, and `create --here` stops on any file it would overwrite.
+- **Federation is always on.** Every host has `<Remote>`, and `--addons federation` is refused. `--addons shell` is refused with a note that it is `navigation`.
+- **Overrides need `overrides.origins`.** An override from another origin is ignored, expires after 24 hours, and logs a console notice. `server.cors` is a list of origins.
+- **`dev`, `preview` and `build` start each app's `vite` directly.** The apps' `package.json` scripts are not run.
+- **Generated deploy workflows pass no secrets by default.** List them in `deployEnv`, then run `spool ci --force`. Jobs run in the `production` GitHub environment, so set its Deployment branches to `main` and add reviewers.
+- **Generated workspaces changed.** Node 26, clutch 1.0 (`createStore`, `useStore`), Sentry 11 with `dataCollection` and tracing off, strict ESLint, `vue-tsc` and `svelte-check` type checks, Svelte runes, and a root package named `<name>-workspace`. Spool no longer bundles Prettier, and formats with your workspace's own when it has one.
 
 ### Added
 
-- The npm package ships its README.
+- **`<Remote>` in Vue and Svelte** takes the same options as React: a `fallback` and `error` slot or snippet, and an error event or `onError`. A load times out after 15 seconds with `TIMEOUT`, and a `RemoteError` has `code`, `remote` and `needsReload`.
+- **`csp: "strict"`** adds `script-src` and `connect-src` to `_headers`, with the remotes, override origins and Sentry origin. Every app also gets `object-src 'none'` and `base-uri 'self'`.
+- **`deployEnv`** on an app lists the secrets its deploy job receives.
+- **Sentry scrubbing.** `src/sentry-scrub.ts` cuts urls to origin and path in events and breadcrumbs, and removes query strings, `Referer` and Vue props.
+- **`spool doctor`** warns about a leftover `spool.vite.ts` or `public/_headers`.
+
+### Changed
+
+- `spool dev --kill` and `preview --kill` only stop processes spool started, checked by start time and command line. A manifest port held by anything else fails with `PORT_IN_USE`.
+- `spool build` runs half the cores at once, at most 4.
+- The CLI has one runtime dependency, `@clack/prompts`.
+- The published package has no source maps.
+
+### Fixed
+
+- A load that never answers no longer blocks a retry.
+- A `public/_headers` snapshot can no longer drift from `spool.json`.
+- A malformed `spool.json` reports every problem, where it used to print a stack trace.
+- A header name or value with a line break is refused rather than written into `_headers`.
+
+Versions below were published as `@bkincz/spool`.
 
 ## 4.0.0 - 2026-10-22
 
@@ -20,11 +52,9 @@
 
 - **Remote names are typed.** `<Remote name>`, `onError` and `preloadRemote` take a
   `RemoteName`, so a typo no longer compiles, and neither does a plain `string`.
-  Type route tables as `Record<string, RemoteName>`. See
-  [Upgrading to 4](./README.md#upgrading-to-4).
+  Type route tables as `Record<string, RemoteName>`.
 - **React's `<Remote>` only catches load failures.** A remote that throws while
-  rendering reaches your own error boundary, so add one around the host's routes. See
-  [Upgrading to 4](./README.md#upgrading-to-4).
+  rendering reaches your own error boundary, so add one around the host's routes.
 
 ### Added
 
@@ -80,8 +110,6 @@
   `CLOUDFLARE_ACCOUNT_ID`.
 
 ## 3.0.0 - 2026-09-09
-
-See [Upgrading to 3](./README.md#upgrading-to-3).
 
 ### Breaking
 
