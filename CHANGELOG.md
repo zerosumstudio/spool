@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.1 - Unreleased
+
+The last release of `@bkincz/spool`. Only the README changes: it now points to `@zerosumstudio/spool`, where the library continues.
+
 ## 4.0.0
 
 ### Breaking
