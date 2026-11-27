@@ -2,19 +2,19 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { readFile, writeFile } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import {
-	DEFAULT_FRAMEWORK,
-	HELPER_FILE,
+	APP_DEFAULTS,
+	APP_KEYS,
+	MANIFEST_DEFAULTS,
 	MANIFEST_FILE,
-	MANIFEST_VERSION,
+	MANIFEST_KEYS,
 	parseManifest,
 	type AppConfig,
 	type Manifest,
 } from './config.js'
 import { formatFile } from './format.js'
-import { CliError } from '../util/errors.js'
+import { findWorkspaceRoot, parseJson, requireWorkspaceRoot } from './manifest-file.js'
 
 /*
  *   TYPES
@@ -33,39 +33,21 @@ export interface Workspace {
 /*
  *   WORKSPACE
  ***************************************************************************************************/
-export function findWorkspaceRoot(cwd = process.cwd()): string | null {
-	let dir = resolve(cwd)
+async function readWorkspace(root: string): Promise<Workspace> {
+	const manifestPath = join(root, MANIFEST_FILE)
+	const raw = parseJson(await readFile(manifestPath, 'utf8'))
 
-	while (true) {
-		if (existsSync(join(dir, MANIFEST_FILE))) return dir
-		const parent = dirname(dir)
-		if (parent === dir) return null
-		dir = parent
-	}
+	return { root, manifestPath, manifest: parseManifest(raw), raw }
 }
 
 export async function loadWorkspace(cwd = process.cwd()): Promise<Workspace | null> {
 	const root = findWorkspaceRoot(cwd)
-	if (!root) return null
-	const manifestPath = join(root, MANIFEST_FILE)
-	const raw = JSON.parse(await readFile(manifestPath, 'utf8'))
-	return { root, manifestPath, manifest: parseManifest(raw), raw }
+
+	return root ? readWorkspace(root) : null
 }
 
 export async function requireWorkspace(cwd = process.cwd()): Promise<Workspace> {
-	const ws = await loadWorkspace(cwd)
-	if (!ws) {
-		throw new CliError(
-			`No ${MANIFEST_FILE} found. Run \`spool create\` first, or cd into a spool workspace.`,
-		)
-	}
-	return ws
-}
-
-/** Workspaces keep their scaffolded spool.vite.ts until `spool upgrade` regenerates it. */
-export function helperLacks(ws: Workspace, token: string): boolean {
-	const helper = join(ws.root, HELPER_FILE)
-	return existsSync(helper) && !readFileSync(helper, 'utf8').includes(token)
+	return readWorkspace(requireWorkspaceRoot(cwd))
 }
 
 export async function saveManifest(ws: Workspace): Promise<void> {
@@ -80,55 +62,12 @@ export async function saveManifest(ws: Workspace): Promise<void> {
 /*
  *   RAW-PRESERVING SERIALIZATION
  ***************************************************************************************************/
-const MANIFEST_DEFAULTS: Partial<Record<keyof Manifest, unknown>> = {
-	version: MANIFEST_VERSION,
-	packageManager: 'pnpm',
-	bundler: 'vite',
-	shared: ['react', 'react-dom'],
-	shareStrategy: 'loaded-first',
-	addons: [],
-	overrides: false,
-}
-
-const MANIFEST_FIELD_ORDER: (keyof Manifest)[] = [
-	'name',
-	'version',
-	'packageManager',
-	'bundler',
-	'shared',
-	'shareStrategy',
-	'server',
-	'addons',
-	'apps',
-	'overrides',
-]
-
-const APP_DEFAULTS: Partial<Record<keyof AppConfig, unknown>> = {
-	framework: DEFAULT_FRAMEWORK,
-	remotes: [],
-	exposes: {},
-}
-
-const APP_FIELD_ORDER: (keyof AppConfig)[] = [
-	'type',
-	'framework',
-	'path',
-	'port',
-	'url',
-	'urls',
-	'deploy',
-	'remotes',
-	'exposes',
-	'headers',
-	'frameAncestors',
-]
-
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** Raw's own keys first (its original order), then anything new, in `fallback` order. */
-function orderedKeys(raw: Record<string, unknown>, fallback: string[]): string[] {
+function orderedKeys(raw: Record<string, unknown>, fallback: readonly string[]): string[] {
 	const known = new Set(Object.keys(raw))
 	return [...Object.keys(raw), ...fallback.filter(key => !known.has(key))]
 }
@@ -141,7 +80,7 @@ export function manifestForWrite(manifest: Manifest, raw: unknown): unknown {
 	const rawObj = isRecord(raw) ? raw : {}
 	const out: Record<string, unknown> = {}
 
-	for (const key of orderedKeys(rawObj, MANIFEST_FIELD_ORDER)) {
+	for (const key of orderedKeys(rawObj, MANIFEST_KEYS)) {
 		if (key === 'apps') {
 			out.apps = appsForWrite(manifest.apps, rawObj.apps)
 			continue
@@ -152,7 +91,7 @@ export function manifestForWrite(manifest: Manifest, raw: unknown): unknown {
 		if (
 			key in MANIFEST_DEFAULTS &&
 			!(key in rawObj) &&
-			deepEqual(value, MANIFEST_DEFAULTS[key as keyof Manifest])
+			deepEqual(value, (MANIFEST_DEFAULTS as Record<string, unknown>)[key])
 		) {
 			continue
 		}
@@ -179,13 +118,13 @@ function appForWrite(app: AppConfig, rawApp: unknown): Record<string, unknown> {
 	const rawObj = isRecord(rawApp) ? rawApp : {}
 	const out: Record<string, unknown> = {}
 
-	for (const key of orderedKeys(rawObj, APP_FIELD_ORDER)) {
+	for (const key of orderedKeys(rawObj, APP_KEYS)) {
 		const value = (app as unknown as Record<string, unknown>)[key]
 		if (value === undefined) continue
 		if (
 			key in APP_DEFAULTS &&
 			!(key in rawObj) &&
-			deepEqual(value, APP_DEFAULTS[key as keyof AppConfig])
+			deepEqual(value, (APP_DEFAULTS as Record<string, unknown>)[key])
 		) {
 			continue
 		}

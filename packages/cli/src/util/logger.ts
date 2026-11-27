@@ -1,37 +1,45 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import pc from 'picocolors'
-import { CliError } from './errors.js'
+import { errorStyle, style as outStyle, type Style } from './style.js'
 
 /*
  *   LOGGER
  ***************************************************************************************************/
-const tag = pc.bold(pc.cyan('spool'))
-
 let sink: 'stdout' | 'stderr' = 'stdout'
 
-function write(msg: string): void {
-	if (sink === 'stdout') console.log(msg)
-	else console.error(msg)
+const tag = (s: Style): string => s.bold(s.cyan('spool'))
+
+function write(format: (s: Style) => string): void {
+	if (sink === 'stdout') console.log(format(outStyle))
+	else console.error(format(errorStyle))
 }
 
 export const log = {
-	info: (msg: string) => write(`${tag} ${msg}`),
-	step: (msg: string) => write(`${tag} ${pc.dim('›')} ${msg}`),
-	success: (msg: string) => write(`${tag} ${pc.green('✓')} ${msg}`),
-	warn: (msg: string) => write(`${tag} ${pc.yellow('!')} ${msg}`),
-	error: (msg: string) => console.error(`${tag} ${pc.red('✗')} ${msg}`),
-	plain: (msg: string) => write(msg),
+	info: (message: string) => {
+		write(s => `${tag(s)} ${message}`)
+	},
+	step: (message: string) => {
+		write(s => `${tag(s)} ${s.dim('›')} ${message}`)
+	},
+	success: (message: string) => {
+		write(s => `${tag(s)} ${s.green('✓')} ${message}`)
+	},
+	warn: (message: string) => {
+		write(s => `${tag(s)} ${s.yellow('!')} ${message}`)
+	},
+	error: (message: string) => {
+		console.error(`${tag(errorStyle)} ${errorStyle.red('✗')} ${message}`)
+	},
+	plain: (message: string) => {
+		write(() => message)
+	},
+	/** Sends logs to stderr, which keeps stdout free for a `--json` document. */
 	useStderr: () => {
 		sink = 'stderr'
 	},
 	useStdout: () => {
 		sink = 'stdout'
 	},
-}
-
-/** Abort the current command. index.ts prints the message and sets the exit code. */
-export function fail(msg: string): never {
-	throw new CliError(msg)
+	isStderr: (): boolean => sink === 'stderr',
 }

@@ -8,6 +8,7 @@ import { create } from '../../commands/create.js'
 import { add } from '../../commands/add.js'
 import { run } from '../../util/exec.js'
 import { log } from '../../util/logger.js'
+import { installInvocation } from '../../util/install-command.js'
 import { freshDir, removeDir } from '../helpers.js'
 
 /*
@@ -74,7 +75,7 @@ describe('add', () => {
 			pm: 'pnpm',
 			host: 'shell',
 			remotes: 'dashboard',
-			addons: 'shell',
+			addons: 'navigation',
 			install: false,
 		})
 		process.chdir(dir)
@@ -83,7 +84,26 @@ describe('add', () => {
 		expect(read('apps/shell/src/federation/remotes.ts')).toContain('checkout/App')
 	})
 
-	it('prints a mount hint for svelte and vue hosts, for both remote contracts', async () => {
+	it('gives a host added with --type host the federation files and the runtime dependency', async () => {
+		await add('portal', { type: 'host', install: false })
+
+		expect(existsSync(join(dir, 'apps/portal/src/federation/remotes.ts'))).toBe(true)
+		expect(existsSync(join(dir, 'apps/portal/src/federation/index.ts'))).toBe(true)
+		expect(JSON.parse(read('apps/portal/package.json')).dependencies).toHaveProperty(
+			'@module-federation/runtime',
+		)
+	})
+
+	it('gives a plain remote no registry, and no runtime dependency', async () => {
+		await add('widgets', { install: false, host: 'shell' })
+
+		expect(existsSync(join(dir, 'apps/widgets/src/federation'))).toBe(false)
+		expect(JSON.parse(read('apps/widgets/package.json')).dependencies).not.toHaveProperty(
+			'@module-federation/runtime',
+		)
+	})
+
+	it('wires react and svelte remotes into svelte and vue hosts', async () => {
 		for (const fw of ['svelte', 'vue'] as const) {
 			process.chdir(cwd)
 			removeDir(dir)
@@ -123,15 +143,15 @@ describe('add', () => {
 		expect(hostPkg.devDependencies['@types/react']).toBeDefined()
 	})
 
-	it('restores a missing runtime helper and warns about pre-helper apps', async () => {
+	it('restores a missing workspace helper and says so', async () => {
 		const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
-		rmSync(join(dir, 'spool.vite.ts'))
+		rmSync(join(dir, 'spool.workspace.ts'))
 		await add('settings', { install: false })
-		expect(existsSync(join(dir, 'spool.vite.ts'))).toBe(true)
+		expect(existsSync(join(dir, 'spool.workspace.ts'))).toBe(true)
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining('restored'))
 	})
 
-	it('leaves an existing runtime helper untouched and quiet', async () => {
+	it('leaves an existing workspace helper untouched and quiet', async () => {
 		const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
 		await add('settings', { install: false })
 		expect(warn).not.toHaveBeenCalled()
@@ -150,19 +170,25 @@ describe('add', () => {
 		)
 	})
 
-	it('shares the new framework runtime so its apps stay singletons', async () => {
-		await add('widget', { framework: 'svelte', install: false })
+	it('shares a new vue remote runtime so its apps stay singletons', async () => {
+		await add('widget', { framework: 'vue', install: false })
 		const manifest = JSON.parse(read('spool.json'))
-		expect(manifest.shared).toContain('svelte')
+		expect(manifest.shared).toContain('vue')
 		expect(manifest.shared).toContain('react')
 	})
 
-	it('hints the MountRemote wrapper for a mount-contract remote in a react host', async () => {
-		const step = vi.spyOn(log, 'step').mockImplementation(() => {})
-		const plain = vi.spyOn(log, 'plain').mockImplementation(() => {})
+	it('never shares svelte, which mounts through its own runtime', async () => {
 		await add('widget', { framework: 'svelte', install: false })
-		expect(step).toHaveBeenCalledWith(expect.stringContaining('apps/shell/src/app/app.tsx'))
-		expect(plain).toHaveBeenCalledWith(expect.stringContaining('function MountRemote'))
+		const manifest = JSON.parse(read('spool.json'))
+		expect(manifest.shared).not.toContain('svelte')
+		expect(manifest.shared).toContain('react')
+	})
+
+	it('says to render <Remote> for a mount-contract remote in a react host', async () => {
+		const step = vi.spyOn(log, 'step').mockImplementation(() => {})
+		await add('widget', { framework: 'svelte', install: false })
+		expect(step).toHaveBeenCalledWith(expect.stringContaining('<Remote name="widget" />'))
+		expect(step).toHaveBeenCalledWith(expect.stringContaining('"@/federation"'))
 	})
 
 	it('writes the react bridge when a react remote joins a svelte host', async () => {
@@ -171,7 +197,7 @@ describe('add', () => {
 		await add('billing', { host: 'panel', install: false })
 
 		expect(read('apps/panel/src/react-bridge.ts')).toContain('mountReact')
-		expect(step).toHaveBeenCalledWith(expect.stringContaining('apps/panel/src/app/app.svelte'))
+		expect(step).toHaveBeenCalledWith(expect.stringContaining('<Remote name="billing" />'))
 	})
 
 	it('rejects an unknown framework', async () => {
@@ -186,13 +212,12 @@ describe('add', () => {
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining('--host only applies'))
 	})
 
-	it('prints exact instructions for mounting the new remote', async () => {
+	it('prints how to mount the new remote', async () => {
 		const step = vi.spyOn(log, 'step').mockImplementation(() => {})
-		const plain = vi.spyOn(log, 'plain').mockImplementation(() => {})
 		await add('settings', { install: false })
-		expect(step).toHaveBeenCalledWith(expect.stringContaining('apps/shell/src/app/app.tsx'))
-		expect(plain).toHaveBeenCalledWith(expect.stringContaining('import("settings/App")'))
-		expect(plain).toHaveBeenCalledWith(expect.stringContaining('Settings'))
+		expect(step).toHaveBeenCalledWith(
+			'To show it, render <Remote name="settings" /> from "@/federation" in shell.',
+		)
 	})
 
 	it('adds a host without wiring it as a remote', async () => {
@@ -217,7 +242,12 @@ describe('add', () => {
 	it('installs the new app so it is ready for dev', async () => {
 		vi.mocked(run).mockResolvedValue(undefined)
 		await add('settings', {})
-		expect(run).toHaveBeenCalledWith('pnpm', ['install'], expect.objectContaining({ cwd: dir }))
+		const { command, args, ...options } = installInvocation('pnpm')
+		expect(run).toHaveBeenCalledWith(
+			command,
+			args,
+			expect.objectContaining({ cwd: dir, ...options }),
+		)
 	})
 
 	it('warns but does not throw when the install fails', async () => {

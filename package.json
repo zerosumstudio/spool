@@ -16,20 +16,20 @@
 		"spool": "pnpm --filter @zerosumstudio/spool exec spool",
 		"test": "pnpm -r --filter \"./packages/*\" test",
 		"test:coverage": "pnpm -r --filter \"./packages/*\" test:coverage",
-		"test:run": "pnpm -r --filter \"./packages/*\" test:run",
 		"type-check": "pnpm -r --filter \"./packages/*\" type-check",
 		"verify": "pnpm run type-check && pnpm run lint && pnpm run format:check && pnpm run test:coverage && pnpm run build"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"eslint": "^10.8.1",
-		"globals": "^17.9.0",
-		"prettier": "^3.9.6",
+		"eslint": "^10.15.0",
+		"globals": "^17.14.0",
+		"prettier": "^3.10.1",
+		"prettier-plugin-svelte": "^4.2.0",
 		"typescript": "^6.0.3",
-		"typescript-eslint": "^8.66.0"
+		"typescript-eslint": "^8.74.0"
 	},
 	"packageManager": "pnpm@11.6.0",
 	"engines": {
-		"node": ">=22.12.0"
+		"node": ">=26"
 	}
 }

@@ -57,15 +57,11 @@ describe('graph: text', () => {
  *   JSON
  ***************************************************************************************************/
 describe('graph --json', () => {
-	it('prints a structured graph matching the manifest', async () => {
+	it('returns a structured graph matching the manifest, and prints nothing itself', async () => {
 		const plain = vi.spyOn(log, 'plain').mockImplementation(() => {})
-		await graph({ json: true })
+		const data = await graph({ json: true })
 
-		const data = JSON.parse(printed(plain.mock.calls)) as {
-			name: string
-			apps: { name: string; type: string; consumes: string[]; exposes: string[] }[]
-			shared: string[]
-		}
+		expect(plain).not.toHaveBeenCalled()
 
 		expect(data.name).toBe('acme')
 		expect(data.shared).toEqual(['react', 'react-dom'])

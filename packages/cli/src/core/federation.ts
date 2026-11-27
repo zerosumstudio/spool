@@ -99,10 +99,11 @@ function conflictFor(dep: string, shipped: Shipped[]): SingletonConflict | undef
 
 	const unsatisfied = shipped
 		// Null means spool cannot read the range, so it says nothing rather than just guessing.
-		.filter(
-			entry => entry.requiredVersion && satisfies(chosen, entry.requiredVersion) === false,
+		.flatMap(({ app, requiredVersion }) =>
+			requiredVersion && satisfies(chosen, requiredVersion) === false
+				? [{ app, requiredVersion }]
+				: [],
 		)
-		.map(entry => ({ app: entry.app, requiredVersion: entry.requiredVersion! }))
 
 	if (!unsatisfied.length) return undefined
 

@@ -3,9 +3,8 @@
  ***************************************************************************************************/
 import { join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
-import pc from 'picocolors'
-import { helperLacks, type Workspace } from './workspace.js'
-import { HELPER_FILE, type AppConfig } from './config.js'
+import type { Workspace } from './workspace.js'
+import type { AppConfig } from './config.js'
 import { checkBuiltSingletons, describeShipped } from './federation.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
@@ -18,15 +17,23 @@ import {
 	killPid,
 } from '../util/exec.js'
 import { waitForManifest, portOwner } from '../util/net.js'
+import { ladleInvocation, viteInvocation, type Invocation } from '../util/bin.js'
+import { inspectProcess, isSameProcess, type ExpectedProcess } from '../util/process.js'
 import { remoteEnvVar } from '../util/names.js'
 import { CliError } from '../util/errors.js'
 import { log } from '../util/logger.js'
-import { COLORS, DevOutput, type ServeMode, type TrackMeta } from './output.js'
-import { writePidfile, readPidfile, removePidfile, type TrackedChild } from './pidfile.js'
+import { style } from '../util/style.js'
+import { DevOutput, pickColor, type ServeMode, type TrackMeta } from './output.js'
+import {
+	writePidfile,
+	readPidfile,
+	removePidfile,
+	type Pidfile,
+	type TrackedChild,
+} from './pidfile.js'
 import {
 	readDeployStore,
 	recordDeploy,
-	deployHistory,
 	readBuiltSharedEntries,
 	sharedConflicts,
 	type DeployRecord,
@@ -44,7 +51,7 @@ interface NamedApp {
 export interface AppRunResult {
 	name: string
 	ok: boolean
-	duration: number
+	durationMs: number
 	error?: string
 }
 
@@ -60,8 +67,6 @@ export interface ServeOptions {
 	ladle?: boolean
 }
 
-const DEFAULT_REMOTE_TIMEOUT_SECONDS = 20
-
 /*
  *   SELECTION
  ***************************************************************************************************/
@@ -74,6 +79,7 @@ function selectApps(ws: Workspace, only?: string[]): NamedApp[] {
 	if (unknown.length) {
 		throw new CliError(
 			`Unknown app(s) in --only: ${unknown.join(', ')}. Check the names in spool.json.`,
+			'APP_NOT_FOUND',
 		)
 	}
 	return all.filter(a => only.includes(a.name))
@@ -169,6 +175,7 @@ function resolveRest(
 	if (unresolved.length) {
 		throw new CliError(
 			`--rest ${rest.env} needs a "urls.${rest.env}" or "url" for ${unresolved.join(', ')} in spool.json.`,
+			'INVALID_VALUE',
 		)
 	}
 
@@ -185,9 +192,8 @@ async function serveAll(ws: Workspace, mode: ServeMode, opts: ServeOptions = {})
 
 	if (mode === 'preview') {
 		requireDists(ws, apps)
-		warnStalePreview(ws)
 		warnDeployedUrls(apps)
-	} else warnStaleFsAllow(ws)
+	}
 
 	const excluded = excludedRemotes(ws, apps)
 	const rest = resolveRest(ws, excluded, opts.rest)
@@ -208,14 +214,12 @@ async function serveAll(ws: Workspace, mode: ServeMode, opts: ServeOptions = {})
 	for (const built of rest.builtRemotes) session.startBuilt(built, index++)
 	if (ladle) session.startLadle(ladle, index++)
 
-	const timeoutSeconds = opts.timeoutSeconds ?? DEFAULT_REMOTE_TIMEOUT_SECONDS
+	const timeoutMs = opts.timeoutSeconds === undefined ? undefined : opts.timeoutSeconds * 1000
 	const controller = new AbortController()
 	session.crashed.catch(() => controller.abort())
 
 	await Promise.race([
-		Promise.all(
-			remotes.map(remote => waitForRemote(remote, timeoutSeconds, controller.signal)),
-		),
+		Promise.all(remotes.map(remote => waitForRemote(remote, timeoutMs, controller.signal))),
 		session.crashed,
 	])
 
@@ -224,41 +228,125 @@ async function serveAll(ws: Workspace, mode: ServeMode, opts: ServeOptions = {})
 	await session.crashed
 }
 
+/*
+ *   KILL
+ ***************************************************************************************************/
+interface KillTarget {
+	pid: number
+	name: string
+}
+
+/**
+ * Splits a pidfile's processes into those that are still the ones spool started
+ * and those that are not. A pid is only killed when the OS reports the start time
+ * and command line spool recorded for it: anything else is a reused pid or a
+ * process an older spool never described, and is left alone.
+ */
+function verifyTracked(
+	pidfile: Pidfile,
+	mode: ServeMode,
+): { stop: KillTarget[]; skipped: string[] } {
+	const stop: KillTarget[] = []
+	const skipped: string[] = []
+
+	const candidates: { pid: number; name: string; expected: ExpectedProcess | undefined }[] = []
+
+	if (pidfile.parentPid !== process.pid) {
+		candidates.push({
+			pid: pidfile.parentPid,
+			name: `${mode} session`,
+			expected: pidfile.parent,
+		})
+	}
+	for (const child of pidfile.children) {
+		const { startedAt, match } = child
+
+		candidates.push({
+			pid: child.pid,
+			name: child.name,
+			expected:
+				startedAt !== undefined && match !== undefined ? { startedAt, match } : undefined,
+		})
+	}
+
+	for (const { pid, name, expected } of candidates) {
+		const info = inspectProcess(pid)
+		if (!info) continue
+
+		if (!expected) {
+			skipped.push(
+				`${name} (pid ${pid}) was recorded by an older spool, so it cannot be told from another process`,
+			)
+		} else if (!isSameProcess(info, expected)) {
+			skipped.push(
+				`pid ${pid} is no longer ${name}: the pid was reused by ${info.commandLine || 'another process'}`,
+			)
+		} else {
+			stop.push({ pid, name })
+		}
+	}
+
+	return { stop, skipped }
+}
+
+/**
+ * Stops what the last `dev` or `preview` started and nothing else. A manifest port
+ * held by any other process is reported and left running, then fails with PORT_IN_USE.
+ */
 export async function killRunning(ws: Workspace, mode: ServeMode): Promise<void> {
 	const pidfile = readPidfile(ws, mode)
-	const targets = new Map<number, string>()
-
-	if (pidfile !== undefined && pidfile.parentPid !== process.pid) {
-		targets.set(pidfile.parentPid, `${mode} session`)
-	}
-	for (const child of pidfile?.children ?? []) targets.set(child.pid, child.name)
+	const { stop, skipped } = pidfile ? verifyTracked(pidfile, mode) : { stop: [], skipped: [] }
+	const ours = new Set(stop.map(target => target.pid))
+	const foreign: string[] = []
 
 	for (const [name, app] of Object.entries(ws.manifest.apps)) {
 		const owner = await portOwner(app.port)
-		if (owner && !targets.has(owner.pid)) targets.set(owner.pid, owner.command ?? name)
+		if (!owner || ours.has(owner.pid)) continue
+
+		foreign.push(
+			`port ${app.port} (${name}) is used by ${owner.command ?? 'another process'} (pid ${owner.pid}), which spool did not start`,
+		)
 	}
 
 	removePidfile(ws, mode)
 
-	if (!targets.size) {
-		log.info(`Nothing to kill: no ${mode} pidfile and none of the manifest ports are in use.`)
-		return
-	}
-
-	for (const [pid, name] of targets) {
-		const ok = killPid(pid)
-		if (ok) log.step(`stopped ${name} (pid ${pid})`)
+	for (const note of skipped) log.warn(`not stopping ${note}.`)
+	for (const { pid, name } of stop) {
+		if (killPid(pid)) log.step(`stopped ${name} (pid ${pid})`)
 		else log.warn(`could not stop ${name} (pid ${pid}); it may need killing by hand.`)
 	}
 
-	log.success(`stopped ${targets.size} process(es)`)
+	if (foreign.length) {
+		for (const note of foreign) log.warn(`${note}. Not stopping it.`)
+
+		throw new CliError(
+			`${foreign.length} manifest port(s) are held by processes spool did not start, so they were left running. Stop them yourself, or change the port in spool.json.`,
+			'PORT_IN_USE',
+		)
+	}
+
+	if (!stop.length && !skipped.length) {
+		log.info(
+			`Nothing to kill: no ${mode} processes of spool's are running and the manifest ports are free.`,
+		)
+		return
+	}
+
+	log.success(`stopped ${stop.length} process(es)`)
+}
+
+/** What `--kill` needs to recognise a child later: when it started and the script it runs. */
+function recordedProcess(child: ChildProcess): Partial<ExpectedProcess> {
+	const script = child.spawnargs.at(1)
+
+	return script === undefined ? {} : { startedAt: Date.now(), match: script }
 }
 
 class ServeSession {
 	private readonly children: ChildProcess[] = []
 	private readonly tracked: TrackedChild[] = []
 	private shuttingDown = false
-	private reportCrash!: (err: Error) => void
+	private reportCrash!: (error: Error) => void
 
 	readonly crashed: Promise<never>
 
@@ -276,8 +364,8 @@ class ServeSession {
 		void this.exitAfterStop(0)
 	}
 
-	private readonly onFatal = (err: unknown): void => {
-		log.error(err instanceof Error ? err.message : String(err))
+	private readonly onFatal = (error: unknown): void => {
+		log.error(error instanceof Error ? error.message : String(error))
 		void this.exitAfterStop(1)
 	}
 
@@ -328,21 +416,37 @@ class ServeSession {
 
 	private trackChild(name: string, port: number, child: ChildProcess): void {
 		this.children.push(child)
-		if (child.pid !== undefined) this.tracked.push({ name, port, pid: child.pid })
+		if (child.pid !== undefined) {
+			this.tracked.push({
+				name,
+				port,
+				pid: child.pid,
+				...recordedProcess(child),
+			})
+		}
 
 		writePidfile(this.ws, this.mode, this.tracked)
 	}
 
-	private handleSpawnFailure(name: string, err: NodeJS.ErrnoException): void {
+	private failToStart(name: string, error: unknown): void {
+		void this.stopAll()
+		this.reportCrash(
+			error instanceof CliError
+				? error
+				: new CliError(`${name} failed to start: ${String(error)}`),
+		)
+	}
+
+	private handleSpawnFailure(name: string, error: NodeJS.ErrnoException): void {
 		if (this.shuttingDown) return
 
 		this.output.flushAll(name)
 		void this.stopAll()
 
 		const hint =
-			err.code === 'ENOENT'
-				? `Could not run "${this.ws.manifest.packageManager}". Make sure it is installed and on your PATH.`
-				: err.message
+			error.code === 'ENOENT'
+				? 'Could not run node. This should never happen; reinstall node.'
+				: error.message
 		this.reportCrash(new CliError(`${name} failed to start: ${hint}`))
 	}
 
@@ -365,28 +469,56 @@ class ServeSession {
 	}
 
 	start(named: NamedApp, colorIndex: number, extraEnv?: NodeJS.ProcessEnv): void {
-		const child = spawnApp(
-			this.ws,
-			named,
-			COLORS[colorIndex % COLORS.length]!,
-			this.output,
-			this.mode,
-			extraEnv,
-		)
+		let child: ChildProcess
+		try {
+			child = spawnApp(
+				this.ws,
+				named,
+				pickColor(colorIndex),
+				this.output,
+				this.mode,
+				extraEnv,
+			)
+		} catch (error) {
+			this.failToStart(named.name, error)
+			return
+		}
 
-		child.on('error', err => this.handleSpawnFailure(named.name, err as NodeJS.ErrnoException))
+		child.on('error', error =>
+			this.handleSpawnFailure(named.name, error as NodeJS.ErrnoException),
+		)
 		child.on('exit', code => this.handleAppExit(named.name, code))
 
 		this.trackChild(named.name, named.app.port, child)
 	}
 
+	/** Ladle is auxiliary: a workshop that cannot start is a warning, never a crash. */
+	private resolveLadle(dir: string): Invocation | undefined {
+		try {
+			return ladleInvocation(dir, this.ws.root)
+		} catch (error) {
+			log.warn(
+				`ladle failed to start (${error instanceof Error ? error.message : String(error)}). The app servers are still running.`,
+			)
+			return undefined
+		}
+	}
+
 	/** Previews an unselected remote's dist for `--rest built`, regardless of the session's own mode. */
 	startBuilt(named: NamedApp, colorIndex: number): void {
-		const child = spawnProcess(this.ws.manifest.packageManager, ['run', 'preview'], {
-			cwd: join(this.ws.root, named.app.path),
-		})
+		const dir = join(this.ws.root, named.app.path)
+		let child: ChildProcess
+		try {
+			const { command, args } = viteInvocation(dir, 'preview', this.ws.root)
+			child = spawnProcess(command, args, { cwd: dir })
+		} catch (error) {
+			this.failToStart(named.name, error)
+			return
+		}
 
-		child.on('error', err => this.handleSpawnFailure(named.name, err as NodeJS.ErrnoException))
+		child.on('error', error =>
+			this.handleSpawnFailure(named.name, error as NodeJS.ErrnoException),
+		)
 		child.on('exit', code => this.handleAppExit(named.name, code))
 
 		const meta: TrackMeta = {
@@ -394,7 +526,7 @@ class ServeSession {
 			port: named.app.port,
 			order: 1,
 		}
-		const status = this.output.track(named.name, meta, COLORS[colorIndex % COLORS.length]!)
+		const status = this.output.track(named.name, meta, pickColor(colorIndex))
 		child.stdout?.on('data', (d: Buffer) => this.output.chunk(status, d, false))
 		child.stderr?.on('data', (d: Buffer) => this.output.chunk(status, d, true))
 
@@ -402,24 +534,26 @@ class ServeSession {
 	}
 
 	startLadle(info: LadleProcess, colorIndex: number): void {
-		const child = spawnProcess(this.ws.manifest.packageManager, ['run', info.script], {
-			cwd: join(this.ws.root, info.dir),
-		})
+		const dir = join(this.ws.root, info.dir)
+		const invocation = this.resolveLadle(dir)
+		if (!invocation) return
+
+		const child = spawnProcess(invocation.command, invocation.args, { cwd: dir })
 		const status = this.output.track(
 			info.name,
 			{ role: 'component workshop', port: info.port, order: 2, readyOnUrl: true },
-			COLORS[colorIndex % COLORS.length]!,
+			pickColor(colorIndex),
 		)
 
 		child.stdout?.on('data', (d: Buffer) => this.output.chunk(status, d, false))
 		child.stderr?.on('data', (d: Buffer) => this.output.chunk(status, d, true))
 
-		child.on('error', (err: NodeJS.ErrnoException) => {
+		child.on('error', (error: NodeJS.ErrnoException) => {
 			if (this.shuttingDown) return
 
 			this.output.drop(info.name)
 			log.warn(
-				`ladle failed to start (${err.code ?? err.message}). The app servers are still running.`,
+				`ladle failed to start (${error.code ?? error.message}). The app servers are still running.`,
 			)
 		})
 
@@ -476,24 +610,6 @@ function requireDists(ws: Workspace, apps: NamedApp[]): void {
 	}
 }
 
-/** Old helpers serve preview without CORS headers, and _headers files are inert here. */
-function warnStalePreview(ws: Workspace): void {
-	if (helperLacks(ws, 'cors')) {
-		log.warn(
-			`This workspace's ${HELPER_FILE} predates preview CORS support, so browsers may block hosts fetching remotes cross-origin. Run \`spool upgrade\`.`,
-		)
-	}
-}
-
-/** An old helper drops server.fs.allow, so vite answers 403 for those folders. */
-function warnStaleFsAllow(ws: Workspace): void {
-	if (ws.manifest.server?.fs && helperLacks(ws, 'fsAllow')) {
-		log.warn(
-			`This workspace's ${HELPER_FILE} predates server.fs.allow, so the dev server ignores it. Run \`spool upgrade\`.`,
-		)
-	}
-}
-
 /** Host dists bake remote urls at build time; preview cannot rewire them. */
 function warnDeployedUrls(apps: NamedApp[]): void {
 	if (!hostsOf(apps).length) return
@@ -508,12 +624,12 @@ function warnDeployedUrls(apps: NamedApp[]): void {
 
 async function waitForRemote(
 	{ name, app }: NamedApp,
-	timeoutSeconds: number,
+	timeoutMs: number | undefined,
 	signal: AbortSignal,
 ): Promise<void> {
 	const url = `http://localhost:${app.port}/mf-manifest.json`
 	try {
-		await waitForManifest(url, { timeoutMs: timeoutSeconds * 1000, signal })
+		await waitForManifest(url, { ...(timeoutMs === undefined ? {} : { timeoutMs }), signal })
 	} catch {
 		// A sibling crash aborted the poll; that failure is reported elsewhere.
 		if (signal.aborted) return
@@ -531,8 +647,10 @@ function spawnApp(
 	mode: ServeMode,
 	extraEnv?: NodeJS.ProcessEnv,
 ): ChildProcess {
-	const child = spawnProcess(ws.manifest.packageManager, ['run', mode], {
-		cwd: join(ws.root, app.path),
+	const dir = join(ws.root, app.path)
+	const { command, args } = viteInvocation(dir, mode, ws.root)
+	const child = spawnProcess(command, args, {
+		cwd: dir,
 		...(extraEnv ? { env: { ...process.env, ...extraEnv } } : {}),
 	})
 
@@ -551,25 +669,25 @@ function spawnApp(
  *   BUILD
  ***************************************************************************************************/
 function defaultConcurrency(): number {
-	return Math.max(1, availableParallelism() - 1)
+	return Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)))
 }
 
-export async function buildAll(
-	ws: Workspace,
-	only?: string[],
-	env?: string,
-	concurrency = defaultConcurrency(),
-	onResult?: (result: AppRunResult) => void,
-): Promise<void> {
-	const apps = selectApps(ws, only)
-	if (env !== undefined) requireEnvSupport(ws, apps, env)
-	// SPOOL_ENV picks each remote's `urls` entry inside spool.vite.ts.
-	const spawnEnv = env === undefined ? {} : { env: { ...process.env, SPOOL_ENV: env } }
+export interface BuildOptions {
+	only?: string[]
+	env?: string
+	/** Apps built at once within a tier. */
+	concurrency?: number
+	onResult?: (result: AppRunResult) => void
+}
+
+export async function buildAll(ws: Workspace, options: BuildOptions = {}): Promise<void> {
+	const { env } = options
+	const apps = selectApps(ws, options.only)
+	if (env !== undefined) warnUnusedEnv(apps, env)
+
 	const tiers = [remotesOf(apps), hostsOf(apps)].filter(tier => tier.length)
 
-	for (const tier of tiers) {
-		await buildTier(ws, tier, spawnEnv, env, concurrency, onResult)
-	}
+	for (const tier of tiers) await buildTier(ws, tier, options)
 
 	log.success(`built ${apps.length} app(s)`)
 	verifySingletons(ws, apps)
@@ -603,76 +721,94 @@ interface BuildFailure {
 	output: string
 }
 
-async function buildTier(
+interface BuildFailure {
+	name: string
+	output: string
+}
+
+/** Builds one app. A build that cannot even start is a failure like any other. */
+async function buildOne(
 	ws: Workspace,
-	tier: NamedApp[],
-	spawnEnv: { env?: NodeJS.ProcessEnv },
+	{ name, app }: NamedApp,
 	env: string | undefined,
-	concurrency: number,
-	onResult?: (result: AppRunResult) => void,
-): Promise<void> {
+): Promise<{ result: AppRunResult; output: string; failed: boolean }> {
+	log.step(`building ${style.bold(name)} (${app.type})${env ? style.dim(` for ${env}`) : ''}`)
+
+	const started = Date.now()
+	const dir = join(ws.root, app.path)
+	// SPOOL_ENV picks each remote's `urls` entry inside the ./vite helper.
+	const spawnEnv = env === undefined ? {} : { env: { ...process.env, SPOOL_ENV: env } }
+
+	let invocation: Invocation
+
+	try {
+		invocation = viteInvocation(dir, 'build', ws.root)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+
+		return {
+			result: { name, ok: false, durationMs: Date.now() - started, error: message },
+			output: message,
+			failed: true,
+		}
+	}
+
+	const { code, output } = await runCaptured(invocation.command, invocation.args, {
+		cwd: dir,
+		...spawnEnv,
+	})
+	const durationMs = Date.now() - started
+
+	if (code === 0) return { result: { name, ok: true, durationMs }, output, failed: false }
+
+	return {
+		result: { name, ok: false, durationMs, error: output.trim() || `exit code ${code}` },
+		output,
+		failed: true,
+	}
+}
+
+async function buildTier(ws: Workspace, tier: NamedApp[], options: BuildOptions): Promise<void> {
+	const { env, onResult } = options
 	const queue = [...tier]
 	const failures: BuildFailure[] = []
 
 	const worker = async (): Promise<void> => {
-		for (;;) {
-			const next = queue.shift()
-			if (!next) return
+		for (let next = queue.shift(); next; next = queue.shift()) {
+			const { result, output, failed } = await buildOne(ws, next, env)
 
-			const { name, app } = next
-			log.step(`building ${pc.bold(name)} (${app.type})${env ? pc.dim(` for ${env}`) : ''}`)
+			onResult?.(result)
 
-			const started = Date.now()
-			const { code, output } = await runCaptured(
-				ws.manifest.packageManager,
-				['run', 'build'],
-				{ cwd: join(ws.root, app.path), ...spawnEnv },
-			)
-			const duration = Date.now() - started
-
-			if (code !== 0) {
-				failures.push({ name, output })
-				onResult?.({
-					name,
-					ok: false,
-					duration,
-					error: output.trim() || `exit code ${code}`,
-				})
-				continue
-			}
-
-			onResult?.({ name, ok: true, duration })
-			if (output.trim()) log.plain(output.trimEnd())
+			if (failed) failures.push({ name: result.name, output })
+			else if (output.trim()) log.plain(output.trimEnd())
 		}
 	}
 
-	const workers = Math.max(1, Math.min(concurrency, tier.length))
+	const workers = Math.max(1, Math.min(options.concurrency ?? defaultConcurrency(), tier.length))
 	await Promise.all(Array.from({ length: workers }, worker))
 
-	if (!failures.length) return
+	if (failures.length) throwBuildFailures(ws, failures)
+}
 
+function throwBuildFailures(ws: Workspace, failures: BuildFailure[]): never {
 	for (const failure of failures) {
 		log.error(`${failure.name} failed to build:`)
 		if (failure.output.trim()) log.plain(failure.output.trimEnd())
 	}
 
 	const names = failures.map(failure => `"${failure.name}"`).join(', ')
-	const reproduce = filterBuildCommand(ws.manifest.packageManager, failures[0]!.name)
+	const [firstFailure] = failures
+	const reproduce = filterBuildCommand(ws.manifest.packageManager, firstFailure?.name ?? '')
 
 	throw new CliError(
 		failures.length === 1
 			? `Build failed for ${names}. Run \`${reproduce}\` to reproduce it.`
-			: `Builds failed for ${names}.`,
+			: `Builds failed for ${names}. Run \`${reproduce}\` to reproduce the first, and the same with each other name.`,
+		'BUILD_FAILED',
 	)
 }
 
-/** --env resolves inside the generated helper, so an old helper would silently ignore it. */
-function requireEnvSupport(ws: Workspace, apps: NamedApp[], env: string): void {
-	if (helperLacks(ws, 'SPOOL_ENV')) {
-		throw new CliError(
-			`This workspace's ${HELPER_FILE} predates environments, so --env would be silently ignored. Run \`spool upgrade\` first.`,
-		)
-	}
+function warnUnusedEnv(apps: NamedApp[], env: string): void {
 	if (!remotesOf(apps).some(({ app }) => app.urls?.[env])) {
 		log.warn(
 			`No selected remote has a "urls.${env}" entry in spool.json, so every remote falls back to its "url" or localhost.`,
@@ -693,33 +829,9 @@ async function gitHeadSha(cwd: string): Promise<string> {
 	return output.trim()
 }
 
-const shortSha = (sha: string): string => sha.slice(0, 7)
-
-function requireDeployableApp(ws: Workspace, name: string): AppConfig {
-	const app = ws.manifest.apps[name]
-	if (!app) {
-		throw new CliError(
-			`No app named "${name}" in this workspace. Check the names in spool.json.`,
-		)
-	}
-	if (!app.deploy) {
-		throw new CliError(`"${name}" has no "deploy" command in spool.json.`)
-	}
-	return app
-}
-
-async function ensureHeadMatches(ws: Workspace, sha: string): Promise<void> {
-	const head = await gitHeadSha(ws.root)
-	if (head.startsWith(sha)) return
-	throw new CliError(
-		`The working tree is at ${shortSha(head)}, not ${shortSha(sha)}. Check out that commit (and its build) before promoting or rolling back.`,
-	)
-}
-
 async function runAppDeploy(
 	ws: Workspace,
-	name: string,
-	app: AppConfig,
+	{ name, app, command }: DeployEntry,
 	env: string,
 	spawnEnv: { env?: NodeJS.ProcessEnv },
 ): Promise<DeployRecord> {
@@ -739,7 +851,7 @@ async function runAppDeploy(
 		)
 	}
 
-	await runShell(app.deploy!, { cwd: join(ws.root, app.path), ...spawnEnv })
+	await runShell(command, { cwd: join(ws.root, app.path), ...spawnEnv })
 
 	const sha = await gitHeadSha(ws.root)
 	return {
@@ -758,10 +870,9 @@ export async function deployAll(
 ): Promise<void> {
 	const apps = selectApps(ws, only)
 	const ordered = [...remotesOf(apps), ...hostsOf(apps)]
-	const deployable = ordered.filter(a => a.app.deploy)
-
-	// Deploy commands are the user's own; SPOOL_ENV lets them branch per env.
-	const spawnEnv = env === undefined ? {} : { env: { ...process.env, SPOOL_ENV: env } }
+	const deployable = ordered.flatMap(({ name, app }) =>
+		app.deploy ? [{ name, app, command: app.deploy }] : [],
+	)
 
 	for (const { name } of ordered.filter(a => !a.app.deploy)) {
 		log.warn(`${name} has no "deploy" command in spool.json; skipping it.`)
@@ -772,79 +883,61 @@ export async function deployAll(
 		)
 	}
 
-	for (const { name, app } of deployable) {
-		const dir = join(ws.root, app.path)
-		if (!existsSync(join(dir, 'dist'))) {
-			log.warn(
-				`${name} has no dist folder. Run \`spool build\` first if its deploy expects one.`,
-			)
-		}
-		log.step(`deploying ${pc.bold(name)} (${app.type})${env ? pc.dim(` for ${env}`) : ''}`)
+	for (const entry of deployable) await deployOne(ws, entry, env, onResult)
 
-		const started = Date.now()
-		try {
-			if (env !== undefined) {
-				const record = await runAppDeploy(ws, name, app, env, spawnEnv)
-				recordDeploy(ws, env, name, record)
-			} else {
-				await runShell(app.deploy!, { cwd: dir, ...spawnEnv })
-			}
-
-			onResult?.({ name, ok: true, duration: Date.now() - started })
-		} catch (err) {
-			onResult?.({
-				name,
-				ok: false,
-				duration: Date.now() - started,
-				error: err instanceof Error ? err.message : String(err),
-			})
-
-			throw err instanceof CliError
-				? err
-				: new CliError(`Deploy failed for "${name}". Its command: ${app.deploy}`)
-		}
-
-		if (app.type === 'remote' && !app.url) {
-			log.warn(
-				`${name} has no "url" in spool.json, so host production builds still point at localhost. Set it to the deployed mf-manifest.json.`,
-			)
-		}
-	}
 	log.success(`deployed ${deployable.length} app(s)`)
 }
 
-export async function promoteApp(
-	ws: Workspace,
-	env: string,
-	name: string,
-	sha: string,
-): Promise<void> {
-	const app = requireDeployableApp(ws, name)
-	await ensureHeadMatches(ws, sha)
-
-	const record = await runAppDeploy(ws, name, app, env, {
-		env: { ...process.env, SPOOL_ENV: env },
-	})
-	recordDeploy(ws, env, name, record)
-	log.success(`promoted ${name}@${shortSha(record.sha)} to "${env}"`)
+interface DeployEntry {
+	name: string
+	app: AppConfig
+	command: string
 }
 
-export async function rollbackApp(ws: Workspace, env: string, name: string): Promise<void> {
-	const app = requireDeployableApp(ws, name)
-	const history = deployHistory(readDeployStore(ws), env, name)
-	const target = history[1]
+async function deployOne(
+	ws: Workspace,
+	entry: DeployEntry,
+	env: string | undefined,
+	onResult: ((result: AppRunResult) => void) | undefined,
+): Promise<void> {
+	const { name, app, command } = entry
+	const dir = join(ws.root, app.path)
+	// Deploy commands are the user's own; SPOOL_ENV lets them branch per env.
+	const spawnEnv = env === undefined ? {} : { env: { ...process.env, SPOOL_ENV: env } }
 
-	if (!target) {
-		throw new CliError(`No earlier deploy of "${name}" recorded for "${env}" to roll back to.`)
+	if (!existsSync(join(dir, 'dist'))) {
+		log.warn(`${name} has no dist folder. Run \`spool build\` first if its deploy expects one.`)
+	}
+	log.step(`deploying ${style.bold(name)} (${app.type})${env ? style.dim(` for ${env}`) : ''}`)
+
+	const started = Date.now()
+
+	try {
+		if (env === undefined) {
+			await runShell(command, { cwd: dir, ...spawnEnv })
+		} else {
+			recordDeploy(ws, env, name, await runAppDeploy(ws, entry, env, spawnEnv))
+		}
+
+		onResult?.({ name, ok: true, durationMs: Date.now() - started })
+	} catch (error) {
+		onResult?.({
+			name,
+			ok: false,
+			durationMs: Date.now() - started,
+			error: error instanceof Error ? error.message : String(error),
+		})
+
+		throw error instanceof CliError
+			? error
+			: new CliError(`Deploy failed for "${name}". Its command: ${command}`, 'DEPLOY_FAILED')
 	}
 
-	await ensureHeadMatches(ws, target.sha)
-
-	const record = await runAppDeploy(ws, name, app, env, {
-		env: { ...process.env, SPOOL_ENV: env },
-	})
-	recordDeploy(ws, env, name, record)
-	log.success(`rolled ${name} back to ${shortSha(record.sha)} on "${env}"`)
+	if (app.type === 'remote' && !app.url) {
+		log.warn(
+			`${name} has no "url" in spool.json, so host production builds still point at localhost. Set it to the deployed mf-manifest.json.`,
+		)
+	}
 }
 
 function filterBuildCommand(pm: Workspace['manifest']['packageManager'], name: string): string {

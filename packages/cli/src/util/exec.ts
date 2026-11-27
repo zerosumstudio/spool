@@ -2,20 +2,24 @@
  *   IMPORTS
  ***************************************************************************************************/
 import {
-	spawn as nodeSpawn,
+	spawn,
 	spawnSync,
 	type ChildProcess,
 	type SpawnOptions,
+	type StdioOptions,
 } from 'node:child_process'
-import spawn from 'cross-spawn'
+import { setTimeout as delay } from 'node:timers/promises'
 import { log } from './logger.js'
+import { system32Tool } from './system.js'
 
 /*
  *   PLATFORM
  ***************************************************************************************************/
 const isWindows = process.platform === 'win32'
 
-const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+/** How long a process gets to stop on SIGTERM before it is killed, and to die after SIGKILL. */
+const DEFAULT_KILL_GRACE_MS = 2_000
+const KILL_CONFIRM_MS = 1_000
 
 /*
  *   PROCESS
@@ -78,8 +82,8 @@ export function runCaptured(
 		const collect = (chunk: Buffer): void => {
 			output += chunk.toString()
 		}
-		child.stdout?.on('data', collect)
-		child.stderr?.on('data', collect)
+		child.stdout.on('data', collect)
+		child.stderr.on('data', collect)
 
 		child.on('error', (cause: Error) => resolve({ code: null, output: output + cause.message }))
 		child.on('close', code => resolve({ code, output }))
@@ -108,9 +112,11 @@ export function runShell(command: string, opts: SpawnOptions = {}): Promise<void
 			)
 		}
 
+		// A --json run owns stdout for its one document, so the command's output goes to stderr.
+		const stdio: StdioOptions = log.isStderr() ? ['inherit', 2, 'inherit'] : 'inherit'
 		const child = useBash
-			? nodeSpawn('bash', ['-c', command], { stdio: 'inherit', ...opts })
-			: nodeSpawn(command, { shell: true, stdio: 'inherit', ...opts })
+			? spawn('bash', ['-c', command], { stdio, ...opts })
+			: spawn(command, { shell: true, stdio, ...opts })
 
 		child.on('error', reject)
 		child.on('exit', code => {
@@ -133,22 +139,32 @@ export function spawnProcess(cmd: string, args: string[], opts: SpawnOptions = {
 /*
  *   KILL
  ***************************************************************************************************/
-export async function killTree(child: ChildProcess, graceMs = 2_000): Promise<boolean> {
+export async function killTree(
+	child: ChildProcess,
+	graceMs = DEFAULT_KILL_GRACE_MS,
+): Promise<boolean> {
 	if (child.pid === undefined) return true
 
 	if (isWindows) {
-		const result = spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-			stdio: 'ignore',
-		})
+		const result = spawnSync(
+			system32Tool('taskkill.exe'),
+			['/pid', String(child.pid), '/t', '/f'],
+			{
+				stdio: 'ignore',
+			},
+		)
 
 		return result.status === 0 || result.status === 128
 	}
 
-	return killProcessGroupPosix(child, graceMs)
+	return killProcessGroupPosix(child, child.pid, graceMs)
 }
 
-async function killProcessGroupPosix(child: ChildProcess, graceMs: number): Promise<boolean> {
-	const pid = child.pid!
+async function killProcessGroupPosix(
+	child: ChildProcess,
+	pid: number,
+	graceMs: number,
+): Promise<boolean> {
 	const exited = new Promise<boolean>(resolve => child.once('exit', () => resolve(true)))
 
 	if (!signalGroupOrChild(pid, child, 'SIGTERM')) return true
@@ -157,7 +173,7 @@ async function killProcessGroupPosix(child: ChildProcess, graceMs: number): Prom
 
 	if (!signalGroupOrChild(pid, child, 'SIGKILL')) return true
 
-	return Promise.race([exited, delay(1_000).then(() => false)])
+	return Promise.race([exited, delay(KILL_CONFIRM_MS).then(() => false)])
 }
 
 function signalGroupOrChild(pid: number, child: ChildProcess, signal: NodeJS.Signals): boolean {
@@ -179,7 +195,9 @@ export function killTreeSync(child: ChildProcess): void {
 	if (child.pid === undefined) return
 
 	if (isWindows) {
-		spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' })
+		spawnSync(system32Tool('taskkill.exe'), ['/pid', String(child.pid), '/t', '/f'], {
+			stdio: 'ignore',
+		})
 		return
 	}
 
@@ -192,7 +210,9 @@ const alreadyGone = (error: unknown): boolean =>
 
 export function killPid(pid: number): boolean {
 	if (isWindows) {
-		const result = spawnSync('taskkill', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore' })
+		const result = spawnSync(system32Tool('taskkill.exe'), ['/pid', String(pid), '/t', '/f'], {
+			stdio: 'ignore',
+		})
 		return result.status === 0 || result.status === 128
 	}
 

@@ -3,14 +3,14 @@
  ***************************************************************************************************/
 import type { FileMap } from '../filemap.js'
 import { ADDON_DEPS, NODE_RANGE, TOOLCHAIN } from '../versions.js'
-import { json } from '../../util/json.js'
+import { formatJson } from '../../util/json.js'
 
 /*
  *   LADLE
  ***************************************************************************************************/
 export function ladleFiles(): FileMap {
 	return {
-		'packages/ui/package.json': json({
+		'packages/ui/package.json': formatJson({
 			name: 'ui',
 			version: '0.0.0',
 			private: true,
@@ -32,40 +32,40 @@ export function ladleFiles(): FileMap {
 				typescript: TOOLCHAIN.typescript,
 			},
 		}),
-		'packages/ui/tsconfig.json': json({
+		'packages/ui/tsconfig.json': formatJson({
 			extends: '../../tsconfig.base.json',
 			compilerOptions: { jsx: 'react-jsx' },
 			include: ['src'],
 		}),
-		'packages/ui/src/index.ts': `export { Button, type ButtonProps } from "./Button";\n`,
-		'packages/ui/src/Button.tsx': `import type { ReactNode } from "react";
+		'packages/ui/src/index.ts': `export { Button, type ButtonProps } from './Button'\n`,
+		'packages/ui/src/Button.tsx': `import type { ReactNode } from 'react'
 
 export interface ButtonProps {
-  children: ReactNode;
-  onClick?: () => void;
+	children: ReactNode
+	onClick?: () => void
 }
 
 export function Button({ children, onClick }: ButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        font: "inherit",
-        padding: "8px 16px",
-        borderRadius: 6,
-        border: "1px solid #ccc",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
+	return (
+		<button
+			onClick={onClick}
+			style={{
+				font: 'inherit',
+				padding: '8px 16px',
+				borderRadius: 6,
+				border: '1px solid #ccc',
+				cursor: 'pointer',
+			}}
+		>
+			{children}
+		</button>
+	)
 }
 `,
-		'packages/ui/src/Button.stories.tsx': `import type { Story } from "@ladle/react";
-import { Button } from "./Button";
+		'packages/ui/src/Button.stories.tsx': `import type { Story } from '@ladle/react'
+import { Button } from './Button'
 
-export const Basic: Story = () => <Button>Click me</Button>;
+export const Basic: Story = () => <Button>Click me</Button>
 `,
 	}
 }

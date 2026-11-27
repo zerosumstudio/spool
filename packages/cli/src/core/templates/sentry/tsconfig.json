@@ -1,0 +1,4 @@
+{
+	"extends": "../tsconfig.static.json",
+	"include": ["*.ts", "__tests__"]
+}

@@ -46,7 +46,7 @@ export function remote(overrides: Partial<AppConfig> = {}): AppConfig {
 }
 
 export function makeManifest(apps: Record<string, AppConfig>): Manifest {
-	return parseManifest({ name: 'acme', apps })
+	return parseManifest({ name: 'acme', version: 2, apps })
 }
 
 export function makeWorkspace(root: string, apps: Record<string, AppConfig>): Workspace {

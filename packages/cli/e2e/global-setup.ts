@@ -29,10 +29,17 @@ interface FixturePackage {
 	devDependencies: Record<string, string>
 }
 
-function editJson<T>(file: string, edit: (json: T) => void): void {
+// The type parameter only types what the caller edits.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+function editJson<T extends object>(file: string, edit: (json: T) => void): void {
 	const json = JSON.parse(readFileSync(file, 'utf8')) as T
+
 	edit(json)
-	writeFileSync(file, `${JSON.stringify(json, null, '\t')}\n`)
+	writeFileSync(
+		file,
+		`${JSON.stringify(json, null, '	')}
+`,
+	)
 }
 
 // The host's own app file, which spool hands over to the user: a page per
@@ -56,17 +63,17 @@ function record(log: string, value: unknown) {
 }
 
 class AppBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-	state = { failed: false }
+	override state = { failed: false }
 
 	static getDerivedStateFromError() {
 		return { failed: true }
 	}
 
-	componentDidCatch(thrown: unknown) {
+	override componentDidCatch(thrown: unknown) {
 		record('__appCaught', thrown)
 	}
 
-	render() {
+	override render() {
 		return this.state.failed ? <p data-testid="app-error">the app boundary caught it</p> : this.props.children
 	}
 }
@@ -168,7 +175,7 @@ async function scaffold(root: string): Promise<string> {
 			'--pm',
 			'pnpm',
 			'--addons',
-			'federation,navigation',
+			'navigation',
 			'--no-install',
 		],
 		root,

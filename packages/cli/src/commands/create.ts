@@ -2,18 +2,17 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { resolve, basename, join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import * as p from '@clack/prompts'
-import pc from 'picocolors'
 import {
 	DEFAULT_FRAMEWORK,
-	Framework,
+	FRAMEWORKS,
 	MANIFEST_FILE,
+	PACKAGE_MANAGERS,
 	emptyManifest,
-	appPort,
+	getApp,
 	parseFramework,
 	validateFramework,
-	validateName,
 	type AppConfig,
 	type Framework as FrameworkType,
 	type Manifest,
@@ -27,14 +26,18 @@ import {
 	templateExtras,
 	type AddonName,
 } from '../core/addons.js'
-import { FRAMEWORK_DEPS } from '../core/versions.js'
+import { sharedRuntime } from '../core/versions.js'
 import { sentryEnvFiles } from '../core/templates/sentry.js'
 import { formatFiles } from '../core/format.js'
 import { writeFiles } from '../core/fswrite.js'
 import { Provenance } from '../core/provenance.js'
-import { installDependencies } from '../core/install.js'
-import { splitList } from '../util/names.js'
-import { log, fail } from '../util/logger.js'
+import { installOrHint } from '../core/install.js'
+import { CliError, type ErrorCode } from '../util/errors.js'
+import { ask, canPrompt, inputRequired } from '../util/interactive.js'
+import { federationNotes } from '../core/templates/composition.js'
+import { splitList, validateDirArgument, validateName } from '../util/names.js'
+import { style } from '../util/style.js'
+import { log } from '../util/logger.js'
 
 /*
  *   TYPES
@@ -68,44 +71,73 @@ interface CreateInputs {
  *   CREATE
  ***************************************************************************************************/
 export async function create(dir: string | undefined, opts: CreateOptions): Promise<void> {
-	p.intro(pc.cyan(pc.bold('spool create')))
+	checkDirArgument(dir, opts)
+
+	p.intro(style.cyan(style.bold('spool create')))
 
 	const inputs = await resolveInputs(dir, opts)
-	if (!inputs) {
-		p.cancel('Cancelled.')
-		return
-	}
-
 	const targetDir = opts.here ? process.cwd() : resolve(process.cwd(), dir ?? inputs.name)
-	if (existsSync(join(targetDir, MANIFEST_FILE))) {
-		fail(
-			`There is already a spool workspace in ${targetDir}. Pick another folder or remove it first.`,
-		)
-	}
+
+	checkTarget(targetDir, opts.here ?? false)
 
 	const manifest = buildManifest(inputs)
 	const addons = await resolveAddons(opts, manifest)
-	if (addons === null) {
-		p.cancel('Cancelled.')
-		return
-	}
+
 	for (const addon of addons) ADDONS[addon].apply?.(manifest)
 
 	const dsn = await resolveSentryDsn(addons, opts)
-	if (dsn === null) {
-		p.cancel('Cancelled.')
-		return
-	}
-	await scaffold(targetDir, manifest, addons, dsn)
+	const batches = await planScaffold(targetDir, manifest, addons, dsn)
 
-	log.success(`scaffolded ${pc.bold(inputs.name)} in ${pc.dim(targetDir)}`)
+	if (opts.here) ensureNoClashes(targetDir, batches)
+
+	await writeScaffold(targetDir, batches)
+
+	printSummary(inputs, manifest, addons, targetDir)
+	await installOrHint(manifest.packageManager, targetDir, opts.install ?? true)
+
+	const cd = opts.here ? '' : `  cd ${dir ?? inputs.name}\n`
+	p.outro(`${style.green('Done.')} Next:\n${cd}  spool dev`)
+}
+
+function checkDirArgument(dir: string | undefined, opts: CreateOptions): void {
+	if (dir === undefined) return
+
+	const dirError = validateDirArgument(dir)
+	if (dirError) throw new CliError(dirError, 'INVALID_PATH')
+
+	if (opts.here) {
+		throw new CliError(
+			'--here scaffolds into the current folder, so it takes no [dir]. Drop one of them.',
+			'USAGE',
+		)
+	}
+}
+
+function checkTarget(targetDir: string, here: boolean): void {
+	if (existsSync(join(targetDir, MANIFEST_FILE))) {
+		throw new CliError(
+			`There is already a spool workspace in ${targetDir}. Pick another folder or remove it first.`,
+			'TARGET_EXISTS',
+		)
+	}
+
+	if (!here) ensureEmptyTarget(targetDir)
+}
+
+function printSummary(
+	inputs: CreateInputs,
+	manifest: Manifest,
+	addons: AddonName[],
+	targetDir: string,
+): void {
+	log.success(`scaffolded ${style.bold(inputs.name)} in ${style.dim(targetDir)}`)
 	log.step(
-		`host: ${inputs.host.name} (${inputs.host.framework}) on port ${appPort(manifest, inputs.host.name)}`,
+		`host: ${inputs.host.name} (${inputs.host.framework}) on port ${getApp(manifest, inputs.host.name).port}`,
 	)
 
 	for (const remote of inputs.remotes) {
 		log.step(
-			`remote: ${remote.name} (${remote.framework}) on port ${appPort(manifest, remote.name)}`,
+			`remote: ${remote.name} (${remote.framework}) on port ${getApp(manifest, remote.name).port}`,
 		)
 	}
 
@@ -113,102 +145,94 @@ export async function create(dir: string | undefined, opts: CreateOptions): Prom
 		for (const note of ADDONS[addon].notes(manifest, true)) log.step(note)
 	}
 
-	if (opts.install ?? true) {
-		const spinner = p.spinner()
-		spinner.start(`Installing dependencies with ${manifest.packageManager}`)
-
-		const installed = await installDependencies(manifest.packageManager, targetDir)
-		spinner.stop(
-			installed
-				? 'Dependencies installed.'
-				: pc.yellow(
-						`Install failed. Run \`${manifest.packageManager} install\` in the new folder to finish setup.`,
-					),
-		)
-	} else {
-		log.step(
-			`Skipped install. Run \`${manifest.packageManager} install\` in the new folder when you are ready.`,
-		)
-	}
-
-	const cd = opts.here ? '' : `  cd ${dir ?? inputs.name}\n`
-	p.outro(`${pc.green('Done.')} Next:\n${cd}  spool dev`)
+	for (const note of federationNotes(addons.includes('navigation'))) log.step(note)
 }
 
 /*
  *   STEPS
  ***************************************************************************************************/
-async function askText(options: Parameters<typeof p.text>[0]): Promise<string | null> {
-	const answer = await p.text(options)
-
-	return p.isCancel(answer) ? null : (answer ?? '').trim()
+async function askText(options: Parameters<typeof p.text>[0]): Promise<string> {
+	return blankToEmpty(await ask(p.text(options)))
 }
 
-async function resolveInputs(
+/** The workspace name: --name, the folder's name, or a prompt. */
+async function resolveName(
 	dir: string | undefined,
 	opts: CreateOptions,
-): Promise<CreateInputs | null> {
-	let name = opts.name
-	let namePrompted = false
+): Promise<{ name: string; prompted: boolean }> {
+	if (opts.name !== undefined) return { name: opts.name, prompted: false }
 
-	if (name === undefined && dir) {
-		name = basename(resolve(process.cwd(), dir))
+	if (dir) {
+		const name = basename(resolve(process.cwd(), dir))
 		const error = validateName(name, 'workspace name')
 
-		if (error) fail(`${error} (Derived from the folder name; pass --name to override.)`)
+		if (error) {
+			throw new CliError(
+				`${error} (Derived from the folder name; pass --name to override.)`,
+				'INVALID_NAME',
+			)
+		}
+
+		return { name, prompted: false }
 	}
 
-	if (name === undefined) {
-		const answer = await askText({
-			message: 'Workspace name?',
-			placeholder: 'acme-frontend',
-			validate: v => validateName(v ?? '', 'workspace name'),
-		})
-		if (answer === null) return null
+	if (!canPrompt()) inputRequired('workspace name', '--name <name>')
 
-		name = answer
-		namePrompted = true
-	}
+	const name = await askText({
+		message: 'Workspace name?',
+		placeholder: 'acme-frontend',
+		validate: v => validateName(v ?? '', 'workspace name'),
+	})
+
+	return { name, prompted: true }
+}
+
+async function resolvePackageManager(pm: string | undefined): Promise<Manifest['packageManager']> {
+	if (pm !== undefined) return parsePackageManager(pm)
+
+	return ask(
+		p.select<Manifest['packageManager']>({
+			message: 'Package manager?',
+			initialValue: 'pnpm',
+			options: PACKAGE_MANAGERS.map(value => ({ value, label: value })),
+		}),
+	)
+}
+
+async function resolveInputs(dir: string | undefined, opts: CreateOptions): Promise<CreateInputs> {
+	const { name, prompted } = await resolveName(dir, opts)
 
 	ensureValid(name, 'workspace name')
 
-	const interactive = namePrompted || opts.host === undefined || opts.remotes === undefined
+	const interactive = prompted || opts.host === undefined || opts.remotes === undefined
+
+	if (!canPrompt()) {
+		if (opts.host === undefined) inputRequired('host app name', '--host <name>')
+		if (opts.remotes === undefined) inputRequired('remote app names', '--remotes <list>')
+		if (opts.pm === undefined) inputRequired('package manager', '--pm pnpm|npm|yarn')
+	}
+
 	const defaultFramework =
 		opts.framework === undefined ? undefined : parseFramework(opts.framework)
-
 	const host = await resolveHost(opts, defaultFramework, interactive)
-	if (host === null) return null
-
 	const remotes = await resolveRemotes(opts, defaultFramework, interactive, host)
-	if (remotes === null) return null
-
 	const names = [host.name, ...remotes.map(r => r.name)]
+
 	if (new Set(names).size !== names.length) {
-		fail('App names must be unique. A remote cannot share the host name.')
+		throw new CliError(
+			'App names must be unique. A remote cannot share the host name.',
+			'INVALID_NAME',
+		)
 	}
 
-	let packageManager: Manifest['packageManager']
-	if (opts.pm !== undefined) {
-		packageManager = parsePackageManager(opts.pm)
-	} else {
-		const answer = await p.select({
-			message: 'Package manager?',
-			initialValue: 'pnpm' as Manifest['packageManager'],
-			options: [
-				{ value: 'pnpm', label: 'pnpm' },
-				{ value: 'npm', label: 'npm' },
-				{ value: 'yarn', label: 'yarn' },
-			],
-		})
-		if (p.isCancel(answer)) return null
-		packageManager = answer
-	}
+	const packageManager = await resolvePackageManager(opts.pm)
 
 	return { name, host, remotes, packageManager, interactive }
 }
 
-async function resolveAddons(opts: CreateOptions, manifest: Manifest): Promise<AddonName[] | null> {
+async function resolveAddons(opts: CreateOptions, manifest: Manifest): Promise<AddonName[]> {
 	if (opts.addons !== undefined) return parseAddonList(opts.addons, manifest)
+
 	return promptAddons(
 		'Extras to include?',
 		ADDON_NAMES.filter(name => !ADDONS[name].unavailable(manifest)),
@@ -220,22 +244,18 @@ async function resolveHost(
 	opts: CreateOptions,
 	defaultFramework: FrameworkType | undefined,
 	interactive: boolean,
-): Promise<AppSpec | null> {
-	let spec: ParsedSpec
-	if (opts.host !== undefined) {
-		spec = parseSpec(opts.host, 'host name')
-	} else {
-		const raw = await askText({
-			message: 'Host (shell) app name?',
-			initialValue: 'shell',
-			validate: v => validateSpec(v ?? '', 'host name'),
-		})
-		if (raw === null) return null
-		spec = parseSpec(raw, 'host name')
-	}
-
+): Promise<AppSpec> {
+	const spec = parseSpec(
+		opts.host ??
+			(await askText({
+				message: 'Host (shell) app name?',
+				initialValue: 'shell',
+				validate: v => validateSpec(v ?? '', 'host name'),
+			})),
+		'host name',
+	)
 	const framework = await resolveFramework(spec, defaultFramework, interactive, DEFAULT_FRAMEWORK)
-	if (framework === null) return null
+
 	return { name: spec.name, framework }
 }
 
@@ -244,7 +264,7 @@ async function resolveRemotes(
 	defaultFramework: FrameworkType | undefined,
 	interactive: boolean,
 	host: AppSpec,
-): Promise<AppSpec[] | null> {
+): Promise<AppSpec[]> {
 	const raw =
 		opts.remotes ??
 		(await askText({
@@ -253,9 +273,9 @@ async function resolveRemotes(
 			initialValue: 'dashboard',
 			validate: v => validateRemoteList(v ?? ''),
 		}))
-	if (raw === null) return null
 
 	const remotes: AppSpec[] = []
+
 	for (const entry of splitList(raw)) {
 		const spec = parseSpec(entry, 'remote name')
 		const framework = await resolveFramework(
@@ -264,9 +284,10 @@ async function resolveRemotes(
 			interactive,
 			host.framework,
 		)
-		if (framework === null) return null
+
 		remotes.push({ name: spec.name, framework })
 	}
+
 	return remotes
 }
 
@@ -275,66 +296,111 @@ async function resolveFramework(
 	defaultFramework: FrameworkType | undefined,
 	interactive: boolean,
 	fallback: FrameworkType,
-): Promise<FrameworkType | null> {
+): Promise<FrameworkType> {
 	if (spec.framework !== undefined) return spec.framework
 	if (defaultFramework !== undefined) return defaultFramework
 	if (!interactive) return fallback
 
-	const answer = await p.select({
-		message: `Framework for ${spec.name}?`,
-		initialValue: fallback,
-		options: Framework.options.map(value => ({ value, label: value })),
-	})
-	return p.isCancel(answer) ? null : answer
+	return ask(
+		p.select({
+			message: `Framework for ${spec.name}?`,
+			initialValue: fallback,
+			options: FRAMEWORKS.map(value => ({ value, label: value })),
+		}),
+	)
 }
 
-async function scaffold(
+interface Batch {
+	/** Folder the files are written into. */
+	dir: string
+	files: Record<string, string>
+}
+
+async function planScaffold(
 	targetDir: string,
 	manifest: Manifest,
 	addons: AddonName[],
 	sentryDsn: string,
-): Promise<void> {
+): Promise<Batch[]> {
 	const extras = templateExtras(addons)
 	const allowBuilds = addons.flatMap(addon => ADDONS[addon].allowBuilds)
+
+	const batches: Batch[] = [
+		{ dir: targetDir, files: await formatFiles(workspaceFiles(manifest, allowBuilds)) },
+	]
+
+	for (const [name, app] of Object.entries(manifest.apps)) {
+		batches.push({
+			dir: join(targetDir, app.path),
+			files: await formatFiles(appFiles(manifest, name, app, extras, targetDir)),
+		})
+	}
+
+	for (const addon of addons) {
+		batches.push({
+			dir: targetDir,
+			files: await formatFiles(ADDONS[addon].files(manifest, extras)),
+		})
+	}
+
+	if (sentryDsn) batches.push({ dir: targetDir, files: sentryEnvFiles(manifest, sentryDsn) })
+
+	return batches
+}
+
+async function writeScaffold(targetDir: string, batches: Batch[]): Promise<void> {
 	const provenance = Provenance.load(targetDir)
 
-	await writeFiles(targetDir, await formatFiles(workspaceFiles(manifest, allowBuilds)), {
-		provenance,
-	})
-	await Promise.all([
-		...Object.entries(manifest.apps).map(async ([name, app]) =>
-			writeFiles(
-				join(targetDir, app.path),
-				await formatFiles(appFiles(manifest, name, app, extras, targetDir)),
-				{ provenance },
-			),
-		),
-		...addons.map(async addon =>
-			writeFiles(targetDir, await formatFiles(ADDONS[addon].files(manifest, extras)), {
-				provenance,
-			}),
-		),
-	])
-
-	if (sentryDsn) {
-		await writeFiles(targetDir, sentryEnvFiles(manifest, sentryDsn), { provenance })
-	}
+	for (const batch of batches) await writeFiles(batch.dir, batch.files, { provenance })
 
 	await provenance.save()
 }
 
-// One DSN for the whole workspace
-async function resolveSentryDsn(addons: AddonName[], opts: CreateOptions): Promise<string | null> {
-	if (!addons.includes('sentry') || opts.addons !== undefined || !process.stdin.isTTY) return ''
+/** A new folder has to be empty or missing, so a scaffold never mixes into someone's files. */
+function ensureEmptyTarget(targetDir: string): void {
+	if (!existsSync(targetDir)) return
 
-	const answer = await p.text({
+	const entries = readdirSync(targetDir)
+	if (!entries.length) return
+
+	throw new CliError(
+		`${targetDir} is not empty (${listSome(entries)}). Pick an empty or new folder, or use --here to add to this one.`,
+		'TARGET_NOT_EMPTY',
+	)
+}
+
+/** `--here` may share a folder, but never overwrites: stop and name every file in the way. */
+function ensureNoClashes(targetDir: string, batches: Batch[]): void {
+	const clashes = batches.flatMap(batch =>
+		Object.keys(batch.files)
+			.map(rel => join(batch.dir, rel))
+			.filter(path => existsSync(path)),
+	)
+	if (!clashes.length) return
+
+	const names = [...new Set(clashes.map(path => path.slice(targetDir.length + 1)))]
+
+	throw new CliError(
+		`--here would overwrite existing files in ${targetDir}: ${listSome(names)}. Move them or pick another folder.`,
+		'TARGET_NOT_EMPTY',
+	)
+}
+
+function listSome(names: string[]): string {
+	const shown = names.slice(0, 5).join(', ')
+
+	return names.length > 5 ? `${shown} and ${names.length - 5} more` : shown
+}
+
+// One DSN for the whole workspace
+async function resolveSentryDsn(addons: AddonName[], opts: CreateOptions): Promise<string> {
+	if (!addons.includes('sentry') || opts.addons !== undefined || !canPrompt()) return ''
+
+	return askText({
 		message: 'Sentry DSN? (blank to set VITE_SENTRY_DSN later)',
 		placeholder: 'https://<key>@<org>.ingest.sentry.io/<project>',
 		validate: validateDsn,
 	})
-	if (p.isCancel(answer)) return null
-
-	return (answer ?? '').trim()
 }
 
 export function validateDsn(value: string | undefined): string | undefined {
@@ -356,9 +422,7 @@ function buildManifest({ name, host, remotes, packageManager }: CreateInputs): M
 	manifest.packageManager = packageManager
 
 	const frameworks = [...new Set([host.framework, ...remotes.map(r => r.framework)])]
-	manifest.shared = [
-		...new Set(frameworks.flatMap(framework => FRAMEWORK_DEPS[framework].dependencies)),
-	]
+	manifest.shared = [...new Set(frameworks.flatMap(framework => sharedRuntime(framework)))]
 	let port = 5173
 
 	manifest.apps[host.name] = {
@@ -386,12 +450,17 @@ function buildManifest({ name, host, remotes, packageManager }: CreateInputs): M
 
 function ensureValid(value: string, label: string): void {
 	const error = validateName(value, label)
-	if (error) fail(error)
+	if (error) throw new CliError(error, 'INVALID_NAME')
 }
 
 function parsePackageManager(value: string): Manifest['packageManager'] {
-	if (value === 'pnpm' || value === 'npm' || value === 'yarn') return value
-	fail(`Unknown package manager "${value}". Use pnpm, npm or yarn.`)
+	const match = PACKAGE_MANAGERS.find(manager => manager === value)
+	if (match) return match
+
+	throw new CliError(
+		`Unknown package manager "${value}". Use pnpm, npm or yarn.`,
+		'INVALID_VALUE',
+	)
 }
 
 interface ParsedSpec {
@@ -399,28 +468,35 @@ interface ParsedSpec {
 	framework?: FrameworkType
 }
 
-function readSpec(value: string, label: string): { spec: ParsedSpec } | { error: string } {
+function readSpec(
+	value: string,
+	label: string,
+): { spec: ParsedSpec } | { error: string; code: ErrorCode } {
 	const parts = value.split(':').map(part => part.trim())
 	if (parts.length > 2) {
-		return { error: `Invalid ${label} "${value}". Use "name" or "name:framework".` }
+		return {
+			error: `Invalid ${label} "${value}". Use "name" or "name:framework".`,
+			code: 'INVALID_NAME',
+		}
 	}
 
-	const nameError = validateName(parts[0]!, label)
+	const [specName = '', specFramework] = parts
+	const nameError = validateName(specName, label)
 
-	if (nameError) return { error: nameError }
+	if (nameError) return { error: nameError, code: 'INVALID_NAME' }
 
-	if (parts[1] === undefined) return { spec: { name: parts[0]! } }
+	if (specFramework === undefined) return { spec: { name: specName } }
 
-	const frameworkError = validateFramework(parts[1])
-	if (frameworkError) return { error: frameworkError }
+	const frameworkError = validateFramework(specFramework)
+	if (frameworkError) return { error: frameworkError, code: 'INVALID_VALUE' }
 
-	return { spec: { name: parts[0]!, framework: Framework.parse(parts[1]) } }
+	return { spec: { name: specName, framework: parseFramework(specFramework) } }
 }
 
 function parseSpec(raw: string, label: string): ParsedSpec {
 	const result = readSpec(raw, label)
 
-	if ('error' in result) fail(result.error)
+	if ('error' in result) throw new CliError(result.error, result.code)
 	return result.spec
 }
 
@@ -436,4 +512,9 @@ function validateRemoteList(value: string): string | undefined {
 	}
 
 	return undefined
+}
+
+/** clack answers a blank text prompt with `undefined`, whatever its types say. */
+function blankToEmpty(answer: string): string {
+	return ((answer as string | undefined) ?? '').trim()
 }

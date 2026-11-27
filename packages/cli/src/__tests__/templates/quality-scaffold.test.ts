@@ -53,7 +53,7 @@ describe('a workspace scaffolded with lint and test', () => {
 		expect(existsSync(join(dir, 'eslint.config.js'))).toBe(true)
 		expect(existsSync(join(dir, 'apps/shell/vitest.config.ts'))).toBe(true)
 		expect(existsSync(join(dir, 'apps/dashboard/vitest.config.ts'))).toBe(true)
-		expect(existsSync(join(dir, 'apps/shell/src/test/remote-component.tsx'))).toBe(true)
+		expect(existsSync(join(dir, 'apps/shell/src/test/remote-component.ts'))).toBe(true)
 	})
 
 	it('wires the scripts at the root and in every app', () => {

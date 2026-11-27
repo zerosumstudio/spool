@@ -75,7 +75,7 @@ describe('addon', () => {
 			expect(counter).toContain('validate<CounterState>')
 			expect(counter).toContain('version: 1')
 			// Retroactive adds never rewrite app components with the example.
-			expect(read(`apps/${app}/src/app/app.tsx`)).not.toContain('counterMachine')
+			expect(read(`apps/${app}/src/app/app.tsx`)).not.toContain('counterStore')
 		}
 	})
 
@@ -95,7 +95,7 @@ describe('addon', () => {
 
 		await addon([], { install: false })
 
-		const call = vi.mocked(p.multiselect).mock.calls.at(-1)?.[0] as {
+		const call = vi.mocked(p.multiselect).mock.calls.at(-1)?.[0] as unknown as {
 			options: { value: string }[]
 		}
 		expect(call.options.map(option => option.value)).not.toContain('ladle')

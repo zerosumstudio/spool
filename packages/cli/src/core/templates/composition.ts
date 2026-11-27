@@ -1,306 +1,179 @@
+/*
+ *   IMPORTS
+ ***************************************************************************************************/
 import type { AppConfig, Framework, Manifest } from '../config.js'
 import { SENTRY_SDK } from '../versions.js'
 import type { FileMap } from '../filemap.js'
 import { remoteRefs, type RemoteRef } from './index.js'
+import { fitsOnLine } from './layout.js'
+import { readStaticFile, type StaticFile } from './static-files.js'
 
 export const FEDERATION_REMOTES_FILE = 'src/federation/remotes.ts'
-export const NAV_PATH_TESTID = 'shell-path'
+export const NAV_PATH_TESTID = 'route-path'
+
+/*
+ *   NAVIGATION
+ ***************************************************************************************************/
+const LOCATION_BINDING = {
+	react: { source: 'binding.react.ts', file: 'use-location.ts', export: 'useLocation' },
+	vue: { source: 'binding.vue.ts', file: 'use-location.ts', export: 'useLocation' },
+	svelte: { source: 'binding.svelte.ts', file: 'location.ts', export: 'location' },
+} as const satisfies Record<
+	Framework,
+	{ source: StaticFile<'navigation'>; file: string; export: string }
+>
 
 /** Substrate every app gets: the shared history plus a framework binding to
  * read it reactively. Coordination rides on window.history so independent
  * copies stay in sync with no shared singleton. */
 export function navigationFiles(app: AppConfig): FileMap {
-	const [bindingFile, binding] = locationBinding(app.framework)
+	const binding = LOCATION_BINDING[app.framework]
+
 	return {
-		'src/navigation/history.ts': historyCore(),
-		[`src/navigation/${bindingFile}`]: binding,
-		'src/navigation/index.ts': navigationBarrel(app),
+		'src/navigation/history.ts': readStaticFile('navigation', 'history.ts'),
+		[`src/navigation/${binding.file}`]: readStaticFile('navigation', binding.source),
+		'src/navigation/index.ts': navigationBarrel(app.framework),
 	}
 }
 
-function navigationBarrel(app: AppConfig): string {
-	return `export * from "./history";\n${bindingExport(app.framework)}\n`
+function navigationBarrel(framework: Framework): string {
+	const binding = LOCATION_BINDING[framework]
+	const module = binding.file.replace(/\.ts$/, '')
+
+	return `export * from './history'\nexport { ${binding.export} } from './${module}'\n`
 }
 
-function federationBarrel(app: AppConfig): string {
-	return `import { getInstance, registerPlugins } from "@module-federation/runtime";
-import { applyRemoteOverrides, remoteOverridesPlugin } from "./overrides";
+/*
+ *   FEDERATION
+ ***************************************************************************************************/
+const REMOTE_FILE = {
+	react: 'remote.tsx',
+	svelte: 'Remote.svelte',
+	vue: 'Remote.vue',
+} as const satisfies Record<Framework, StaticFile<'federation'>>
 
-// Only with a live federation runtime. Tests and plain vite builds have none.
-if (getInstance()) {
-  registerPlugins([remoteOverridesPlugin]);
-  applyRemoteOverrides();
-}
-
-${remoteExport(app.framework)}
-export { remotes, type RemoteEntry, type RemoteName, isRemoteName, preloadRemote } from "./remotes";
-export { setRemoteOverride, listRemoteOverrides } from "./overrides";
-`
-}
-
-function bindingExport(framework: Framework): string {
-	return framework === 'svelte'
-		? 'export { location } from "./location";'
-		: 'export { useLocation } from "./use-location";'
-}
-
-function remoteExport(framework: Framework): string {
-	if (framework === 'svelte') return 'export { default as Remote } from "./Remote.svelte";'
-	if (framework === 'vue') return 'export { default as Remote } from "./Remote.vue";'
-	return 'export { Remote } from "./remote";'
-}
-
-/** Host-only files: the remote registry (regenerated when remotes change) and
- * the <Remote> mounting primitive that hides the component/mount contract. */
+/** Host-only files: the remote registry (regenerated when remotes change), the error
+ * reporter, and the runtime and <Remote> that are copied from `templates/federation`. */
 export function federationFiles(m: Manifest, host: AppConfig): FileMap {
 	const refs = remoteRefs(m, host)
 	const sentry = m.addons.includes('sentry')
-	const [primitiveFile, primitive] = remotePrimitive(host.framework, refs, sentry)
+	const remoteFile = REMOTE_FILE[host.framework]
+
 	return {
-		[FEDERATION_REMOTES_FILE]: remotesRegistry(refs),
-		[`src/federation/${primitiveFile}`]: primitive,
-		'src/federation/overrides.ts': overridesFile(m.overrides ?? false),
-		'src/federation/load.ts': loadFile(),
+		[FEDERATION_REMOTES_FILE]: remotesRegistry(refs, host.framework),
+		'src/federation/report.ts': reportFile(host.framework, sentry),
 		'src/federation/index.ts': federationBarrel(host),
+		'src/federation/core.ts': readStaticFile('federation', 'core.ts'),
+		'src/federation/overrides.ts': readStaticFile('federation', 'overrides.ts'),
+		[`src/federation/${remoteFile}`]: readStaticFile('federation', remoteFile),
 	}
+}
+
+function federationBarrel(app: AppConfig): string {
+	const remote = REMOTE_FILE[app.framework]
+	const remoteExport =
+		app.framework === 'react'
+			? `export { Remote, type RemoteProps } from './remote'`
+			: `export { default as Remote } from './${remote}'`
+
+	return `import { installRemoteOverrides } from './overrides'
+
+installRemoteOverrides()
+
+${remoteExport}
+export { RemoteError, type RemoteErrorCode } from './core'
+export { remotes, type RemoteEntry, type RemoteName, isRemoteName, preloadRemote } from './remotes'
+export { setRemoteOverride, listRemoteOverrides } from './overrides'
+`
+}
+
+/** `src/federation/report.ts`: where a failed <Remote> load is reported. */
+function reportFile(framework: Framework, sentry: boolean): string {
+	if (!sentry) {
+		return `/** Called with every remote that failed to load. Send it wherever you collect errors. */
+export function reportRemoteError(name: string, error: Error): void {
+	console.error(\`[federation] remote "\${name}" failed to load\`, error)
+}
+`
+	}
+
+	// "remote": the name a host asked for and could not load. Compare
+	// src/sentry.ts's "mfe" tag, which names the chunk that actually threw.
+	return `import * as Sentry from '${SENTRY_SDK[framework]}'
+
+/** Called with every remote that failed to load. */
+export function reportRemoteError(name: string, error: Error): void {
+	Sentry.captureException(error, { tags: { remote: name } })
+}
+`
 }
 
 export function exposeKey(name: string, expose: string): string {
 	return expose === 'App' ? name : `${name}/${expose}`
 }
 
-/** The name-keyed loader table, regenerated whenever a host's remotes change. */
-export function remotesRegistry(refs: RemoteRef[]): string {
+/** The name-keyed loader table, regenerated whenever a host's remotes change. A host on
+ * another framework mounts a component-contract remote through its react bridge. */
+export function remotesRegistry(refs: RemoteRef[], framework: Framework = 'react'): string {
+	const bridged = framework !== 'react' && refs.some(r => r.contract === 'component')
 	const entries = refs.flatMap(r =>
 		r.exposes.map(expose => {
 			const id = `${r.name}/${expose}`
-			return `  ${JSON.stringify(exposeKey(r.name, expose))}: { contract: "${r.contract}", load: () => loadRemote("${id}", () => import("${id}")) },`
+			const mount =
+				bridged && r.contract === 'component' ? '\n\t\tmountComponent: mountReact,' : ''
+
+			return `\t${propertyKey(exposeKey(r.name, expose))}: {
+		contract: '${r.contract}',
+		load: () => loadRemote('${id}', { importRemote: () => import('${id}') }),${mount}
+	},`
 		}),
 	)
 	// A host with no remotes yet has nothing to load.
-	const loadImport = entries.length ? 'import { loadRemote } from "./load";\n\n' : ''
-	return `${loadImport}export interface RemoteEntry {
-  contract: "component" | "mount";
-  load: () => Promise<{ default: unknown }>;
+	const imports = [
+		...(entries.length ? [`import { loadRemote } from './core'`] : []),
+		...(bridged ? [`import { mountReact } from '../react-bridge'`] : []),
+	]
+	const table = entries.length ? `{\n${entries.join('\n')}\n}` : '{}'
+
+	return `${imports.length ? `${imports.join('\n')}\n\n` : ''}export interface RemoteEntry {
+	contract: 'component' | 'mount'
+	load: () => Promise<{ default: unknown }>
+	/** Mounts a component-contract remote into a host of another framework. */
+	mountComponent?: (component: unknown, target: HTMLElement, props?: object) => () => void
 }
 
-export const remotes = {
-${entries.join('\n')}
-} satisfies Record<string, RemoteEntry>;
+export const remotes = ${table} satisfies Record<string, RemoteEntry>
 
 /** Every name <Remote> and preloadRemote accept. */
-export type RemoteName = keyof typeof remotes;
+export type RemoteName = keyof typeof remotes
 
 /** Narrows a name that only arrives at runtime, from a url or a CMS say. */
 export function isRemoteName(name: string): name is RemoteName {
-  return Object.hasOwn(remotes, name);
+	return Object.hasOwn(remotes, name)
 }
 
 /** Fetches a remote before it is mounted, e.g. on route hover. Errors are
  * swallowed; the real mount attempt is what surfaces them. */
 export function preloadRemote(name: RemoteName): Promise<void> {
-  const entry = remotes[name] as RemoteEntry | undefined;
-  return (entry?.load() ?? Promise.resolve()).then(
-    () => undefined,
-    () => undefined,
-  );
+	const entry = remotes[name] as RemoteEntry | undefined
+
+	return (entry?.load() ?? Promise.resolve()).then(
+		() => undefined,
+		() => undefined,
+	)
 }
 `
 }
 
-/** Generated `src/federation/overrides.ts`; see federationNotes for the console API. */
-function overridesFile(enabledInProd: boolean): string {
-	return `/*
- * Lets a developer swap one remote's entry from the browser console, without
- * touching the deployed manifest. Never reads the override from the url:
- * that would let anyone craft a link that swaps in their own remote for
- * someone else.
- */
-import { getInstance, type ModuleFederationRuntimePlugin } from "@module-federation/runtime";
+function propertyKey(value: string): string {
+	if (/^[A-Za-z_$][\w$]*$/.test(value)) return value
 
-// The <Remote> primitives have always imported it from here.
-export { forceReregister } from "./load";
-
-const STORAGE_PREFIX = "spool:remote:";
-
-// Always on in dev, since it is served straight from source. Preview and a
-// production build are the same artifact, so this is what decides whether
-// either of them accepts a console override; set "overrides": true in
-// spool.json to allow it.
-const enabled = import.meta.env.DEV || ${enabledInProd};
-
-function overrideKey(name: string): string {
-  return STORAGE_PREFIX + name;
+	return `'${value.replace(/[\\']/g, match => `\\${match}`)}'`
 }
 
-/** Point \`name\` at \`url\` (its mf-manifest.json or remoteEntry.js), or clear the override with null. */
-export function setRemoteOverride(name: string, url: string | null): void {
-  if (url) localStorage.setItem(overrideKey(name), url);
-  else localStorage.removeItem(overrideKey(name));
-}
-
-/** Every remote name currently overridden, keyed to the url it points to. */
-export function listRemoteOverrides(): Record<string, string> {
-  const overrides: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key?.startsWith(STORAGE_PREFIX)) {
-      overrides[key.slice(STORAGE_PREFIX.length)] = localStorage.getItem(key)!;
-    }
-  }
-  return overrides;
-}
-
-export const remoteOverridesPlugin: ModuleFederationRuntimePlugin = {
-  name: "spool-remote-overrides",
-  beforeRegisterRemote({ remote, origin }) {
-    if (!enabled || !("entry" in remote)) return { remote, origin };
-    const override = localStorage.getItem(overrideKey(remote.alias ?? remote.name));
-    if (override) remote.entry = override;
-    return { remote, origin };
-  },
-};
-
-// The runtime registers remotes at init, before this file loads, so overrides are re-applied here.
-export function applyRemoteOverrides(): void {
-  if (!enabled) return;
-  const instance = getInstance();
-  if (!instance) return;
-  for (const remote of instance.options.remotes) {
-    if (!("entry" in remote)) continue;
-    const override = localStorage.getItem(overrideKey(remote.alias ?? remote.name));
-    if (override && remote.entry !== override) {
-      instance.registerRemotes([{ ...remote, entry: override }], { force: true });
-    }
-  }
-}
-`
-}
-
-/** Generated `src/federation/load.ts`: every loader in remotes.ts goes through loadRemote. */
-function loadFile(): string {
-	return `import { getInstance, type ModuleFederationRuntimePlugin } from "@module-federation/runtime";
-
-type Federation = NonNullable<ReturnType<typeof getInstance>>;
-
-// Shared by every spool host on the page and keyed by remoteEntry url, like the
-// runtime's own entry cache: a nested host bundles its own copy of this file and
-// of the runtime, but they all share that cache and the browser's module map.
-interface RemoteEntries {
-  // The url each container was evaluated from. Every later load imports that
-  // url, so no container is evaluated twice.
-  loadedFrom: Map<string, string>;
-  // WebKit can answer a second import() of a remoteEntry.js that failed with the
-  // same failure, without fetching it, so each failure moves the next attempt to
-  // a fresh url.
-  failures: Map<string, number>;
-  // The url each entry is being loaded from right now.
-  loading: Map<string, string>;
-}
-
-const page = globalThis as typeof globalThis & { __spoolRemoteEntries?: RemoteEntries };
-const entries: RemoteEntries = (page.__spoolRemoteEntries ??= {
-  loadedFrom: new Map(),
-  failures: new Map(),
-  loading: new Map(),
-});
-
-// The bundler's import("staff/App") keeps its first promise for the life of
-// the page, even a rejected one, so an id whose import has failed goes to the
-// runtime from then on.
-const failedImports = new Set<string>();
-// Loads this bundle has started and not finished, by remote name.
-const inFlight = new Map<string, number>();
-
-function attemptUrl(entry: string): string {
-  const failures = entries.failures.get(entry);
-  if (!failures) return entry;
-  const url = new URL(entry);
-  url.searchParams.set("spool-retry", String(failures));
-  return url.href;
-}
-
-const remoteEntriesPlugin: ModuleFederationRuntimePlugin = {
-  name: "spool-remote-entries",
-  loadEntry({ remoteInfo: { entry, type } }) {
-    const imported = type === "module" || type === "esm";
-    const url = entries.loadedFrom.get(entry) ?? (imported ? attemptUrl(entry) : entry);
-    entries.loading.set(entry, url);
-    if (url !== entry) return import(/* @vite-ignore */ url);
-  },
-  afterLoadEntry({ remoteInfo: { entry }, remoteEntryExports }) {
-    const url = entries.loading.get(entry);
-    entries.loading.delete(entry);
-    if (entries.loadedFrom.has(entry)) return;
-    if (remoteEntryExports) entries.loadedFrom.set(entry, url ?? entry);
-    else if (url) entries.failures.set(entry, (entries.failures.get(entry) ?? 0) + 1);
-  },
-};
-
-let withPlugin: Federation | undefined;
-
-function federation(): Federation | undefined {
-  const instance = getInstance() ?? undefined;
-  if (instance && instance !== withPlugin) {
-    instance.registerPlugins([remoteEntriesPlugin]);
-    withPlugin = instance;
-  }
-  return instance;
-}
-
-/** The remote a registry key or import id belongs to: "staff" for "staff" and
- * "staff/App", "assessments" for "assessments/NewAssessment". */
-export function remoteName(id: string): string {
-  const slash = id.indexOf("/");
-  return slash === -1 ? id : id.slice(0, slash);
-}
-
-function registeredRemote(name: string) {
-  const instance = federation();
-  const remote = instance?.options.remotes.find(candidate => candidate.name === name || candidate.alias === name);
-  return instance && remote ? { instance, remote } : undefined;
-}
-
-/** Re-registers a remote whose entry script failed to load, so the runtime
- * drops the failure it keeps and fetches the entry again. Leaves a remote alone
- * while it is loading, once its entry has loaded anywhere on the page, and when
- * it never got as far as its entry, as nothing about it is kept then. */
-export function forceReregister(id: string): void {
-  const name = remoteName(id);
-  const registered = registeredRemote(name);
-  if (!registered || inFlight.has(name)) return;
-  const { instance, remote } = registered;
-  const module = instance.moduleCache.get(remote.name);
-  if (!module || module.remoteEntryExports) return;
-  const { entry } = module.remoteInfo;
-  if (entries.loadedFrom.has(entry) || entries.loading.has(entry)) return;
-  instance.registerRemotes([remote], { force: true });
-}
-
-/** Loads a remote module through the bundler's import, which also registers
- * the remote with the runtime, and through the runtime once that import has failed. */
-export function loadRemote<T>(id: string, importRemote: () => Promise<T>): Promise<T> {
-  const name = remoteName(id);
-  forceReregister(name);
-  const registered = failedImports.has(id) ? registeredRemote(name) : undefined;
-  const load: Promise<T> = registered
-    ? registered.instance
-        .loadRemote<T>(id)
-        .then((mod) => mod ?? Promise.reject(new Error('remote "' + id + '" loaded nothing')))
-    : importRemote().catch((error: unknown) => {
-        failedImports.add(id);
-        throw error;
-      });
-  inFlight.set(name, (inFlight.get(name) ?? 0) + 1);
-  return load.finally(() => {
-    const loads = inFlight.get(name)! - 1;
-    if (loads) inFlight.set(name, loads);
-    else inFlight.delete(name);
-  });
-}
-`
-}
-
+/*
+ *   NOTES
+ ***************************************************************************************************/
 export function navigationNotes(): string[] {
 	return [
 		'navigation: import { useLocation, navigate } from "@/navigation" to read the url and change it. Every bundle on the page sees the same one.',
@@ -309,519 +182,24 @@ export function navigationNotes(): string[] {
 
 export function federationNotes(composed: boolean): string[] {
 	const overrides =
-		'federation: run `spool types` to type <Remote> from a remote’s real export, and setRemoteOverride(name, url) from the console to point one remote at another build.'
+		'federation: run `spool types` to type <Remote> from a remote’s real export, and setRemoteOverride(name, url) from the console to point one remote at another build. The origin has to be in spool.json "overrides.origins", and the override lasts 24 hours.'
+
 	if (composed) {
 		return [
 			'federation: the host starts as a routed shell in src/app. Mount any remote with <Remote name="..." /> from "@/federation".',
 			overrides,
 		]
 	}
+
 	return [
 		'federation: import { Remote } from "@/federation" to mount a remote by name. Compose them into your host however you like.',
 		overrides,
 	]
 }
 
-function historyCore(): string {
-	return `export interface SpoolLocation {
-  pathname: string;
-  search: string;
-  hash: string;
-}
-
-const EVENT = "spool:navigation";
-
-let cached: SpoolLocation = read();
-
-function read(): SpoolLocation {
-  const { pathname, search, hash } = window.location;
-  return { pathname, search, hash };
-}
-
-function install(): void {
-  const flagged = window as typeof window & { __spoolShell?: boolean };
-  if (flagged.__spoolShell) return;
-  flagged.__spoolShell = true;
-
-  for (const method of ["pushState", "replaceState"] as const) {
-    const original = history[method].bind(history);
-    history[method] = function (this: History, ...args: Parameters<History["pushState"]>) {
-      const result = original(...args);
-      window.dispatchEvent(new Event(EVENT));
-      return result;
-    };
-  }
-  window.addEventListener("popstate", () => window.dispatchEvent(new Event(EVENT)));
-}
-
-install();
-
-export function getLocation(): SpoolLocation {
-  const next = read();
-  if (
-    next.pathname !== cached.pathname ||
-    next.search !== cached.search ||
-    next.hash !== cached.hash
-  ) {
-    cached = next;
-  }
-  return cached;
-}
-
-export function navigate(to: string, options: { replace?: boolean } = {}): void {
-  history[options.replace ? "replaceState" : "pushState"](null, "", to);
-}
-
-export function subscribe(listener: () => void): () => void {
-  window.addEventListener(EVENT, listener);
-  return () => window.removeEventListener(EVENT, listener);
-}
-
-/** The value at the longest url prefix in \`routes\` that matches \`pathname\`. */
-export function matchRoute<Name extends string>(
-  pathname: string,
-  routes: Record<string, Name>,
-): Name | undefined {
-  return Object.entries(routes)
-    .filter(([prefix]) => pathname === prefix || pathname.startsWith(prefix.replace(/\\/$/, "") + "/"))
-    .sort((a, b) => b[0].length - a[0].length)[0]?.[1];
-}
-`
-}
-
-function locationBinding(framework: Framework): [string, string] {
-	if (framework === 'svelte') {
-		return [
-			'location.ts',
-			`import { readable } from "svelte/store";
-import { getLocation, subscribe, type SpoolLocation } from "./history";
-
-export const location = readable<SpoolLocation>(getLocation(), set => subscribe(() => set(getLocation())));
-`,
-		]
-	}
-	if (framework === 'vue') {
-		return [
-			'use-location.ts',
-			`import { onScopeDispose, shallowRef, type ShallowRef } from "vue";
-import { getLocation, subscribe, type SpoolLocation } from "./history";
-
-export function useLocation(): ShallowRef<SpoolLocation> {
-  const location = shallowRef<SpoolLocation>(getLocation());
-  const stop = subscribe(() => {
-    location.value = getLocation();
-  });
-  onScopeDispose(stop);
-  return location;
-}
-`,
-		]
-	}
-	return [
-		'use-location.ts',
-		`import { useSyncExternalStore } from "react";
-import { getLocation, subscribe, type SpoolLocation } from "./history";
-
-export function useLocation(): SpoolLocation {
-  return useSyncExternalStore(subscribe, getLocation, getLocation);
-}
-`,
-	]
-}
-
-function remotePrimitive(
-	framework: Framework,
-	refs: RemoteRef[],
-	sentry: boolean,
-): [string, string] {
-	const hasComponent = refs.some(r => r.contract === 'component')
-	if (framework === 'svelte') return ['Remote.svelte', svelteRemote(hasComponent, sentry)]
-	if (framework === 'vue') return ['Remote.vue', vueRemote(hasComponent, sentry)]
-	return ['remote.tsx', reactRemote(sentry)]
-}
-
-function sentryReport(framework: Framework, sentry: boolean): [string, string] {
-	if (!sentry) return ['', '']
-	const sdk = SENTRY_SDK[framework]
-	return [
-		`import * as Sentry from "${sdk}";
-`,
-		// "remote": the name a host asked for and could not load. Compare
-		// src/sentry.ts's "mfe" tag, which names the chunk that actually threw.
-		'Sentry.captureException(error, { tags: { remote: name } });',
-	]
-}
-
-function reactRemote(sentry: boolean): string {
-	const [sentryImport, sentryCall] = sentryReport('react', sentry)
-	return `import {
-  Component,
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from "react";
-${sentryImport}import { forceReregister } from "./overrides";
-import { remotes, type RemoteEntry, type RemoteName } from "./remotes";
-
-const cache: Record<string, ComponentType<Record<string, unknown>>> = {};
-const warned = new Set<string>();
-// What the boundary handles: a remote that failed to load. Whatever a loaded
-// remote throws goes on to the app's own error boundaries.
-const loadFailures = new WeakSet<Error>();
-
-function loadFailure(cause: unknown): Error {
-  const error = asError(cause);
-  loadFailures.add(error);
-  return error;
-}
-
-function isLoadFailure(thrown: unknown): thrown is Error {
-  return thrown instanceof Error && loadFailures.has(thrown);
-}
-
-function warnUnknownRemote(name: string): void {
-  if (import.meta.env.DEV && !warned.has(name)) {
-    warned.add(name);
-    console.warn('[federation] no remote named "' + name + '" in the registry');
-  }
-}
-
-export interface RemoteProps<P extends object = Record<string, never>> {
-  name: RemoteName;
-  /** Forwarded to the remote: props on a component contract, a second
-   * mount(el, props) argument on a mount contract. */
-  props?: P;
-  /** Shown while the remote is still loading. */
-  fallback?: ReactNode;
-  /** Shown when it fails to load. Call retry to start the load over. Errors
-   * the remote throws once loaded go to the app's error boundaries instead. */
-  renderError?: (error: Error, retry: () => void) => ReactNode;
-  /** Called when it fails to load. */
-  onError?: (error: Error, name: RemoteName) => void;
-}
-
-export function Remote<P extends object = Record<string, never>>({
-  name,
-  props,
-  fallback = null,
-  renderError = defaultError,
-  onError,
-}: RemoteProps<P>) {
-  const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => {
-    // If the entry script is what failed, the runtime holds on to that failure,
-    // so it needs re-registering. React also keeps the rejected promise inside
-    // lazy(), so the wrapper has to go too or the remote stays broken.
-    forceReregister(name);
-    delete cache[name];
-    setAttempt((n) => n + 1);
-  }, [name]);
-
-  const report = useCallback(
-    (error: Error) => {
-      onError?.(error, name);
-      ${sentryCall}
-    },
-    [name, onError],
-  );
-
-  const entry = remotes[name] as RemoteEntry | undefined;
-  if (!entry) {
-    warnUnknownRemote(name);
-    return null;
-  }
-
-  return (
-    <RemoteBoundary
-      key={[name, attempt].join(":")}
-      retry={retry}
-      renderError={renderError}
-      onError={report}
-    >
-      {entry.contract === "component" ? (
-        <Suspense fallback={fallback}>
-          <ComponentRemote name={name} load={entry.load} props={props} />
-        </Suspense>
-      ) : (
-        <MountRemote load={entry.load} props={props} fallback={fallback} />
-      )}
-    </RemoteBoundary>
-  );
-}
-
-function ComponentRemote<P extends object>({
-  name,
-  load,
-  props,
-}: {
-  name: string;
-  load: () => Promise<unknown>;
-  props?: P;
-}) {
-  const View = (cache[name] ??= lazy(() =>
-    (load() as Promise<{ default: ComponentType<Record<string, unknown>> }>).catch(
-      (cause: unknown) => {
-        throw loadFailure(cause);
-      },
-    ),
-  ));
-  return <View {...(props ?? {})} />;
-}
-
-function MountRemote<P extends object>({
-  load,
-  props,
-  fallback,
-}: {
-  load: () => Promise<{ default: unknown }>;
-  props?: P;
-  fallback?: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  // Rethrown during render, because a boundary cannot catch a rejected promise.
-  const [failure, setFailure] = useState<Error | null>(null);
-  const [ready, setReady] = useState(false);
-  // A mount function receives props once. The boundary remounts this component when the name changes.
-  const latestProps = useRef(props);
-  if (failure) throw failure;
-
-  useEffect(() => {
-    latestProps.current = props;
-  }, [props]);
-
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    let cancelled = false;
-    void (load() as Promise<{ default: (el: HTMLElement, props?: P) => () => void }>).then(
-      ({ default: mount }) => {
-        if (!cancelled && ref.current) {
-          cleanup = mount(ref.current, latestProps.current);
-          setReady(true);
-        }
-      },
-      (cause: unknown) => {
-        if (!cancelled) setFailure(loadFailure(cause));
-      },
-    );
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, [load]);
-  return (
-    <>
-      {ready ? null : fallback}
-      <div ref={ref} />
-    </>
-  );
-}
-
-interface BoundaryProps {
-  retry: () => void;
-  renderError: (error: Error, retry: () => void) => ReactNode;
-  onError: (error: Error) => void;
-  children: ReactNode;
-}
-
-interface BoundaryState {
-  failed: boolean;
-  thrown: unknown;
-}
-
-class RemoteBoundary extends Component<BoundaryProps, BoundaryState> {
-  state: BoundaryState = { failed: false, thrown: undefined };
-
-  static getDerivedStateFromError(thrown: unknown): BoundaryState {
-    return { failed: true, thrown };
-  }
-
-  componentDidCatch(thrown: unknown) {
-    if (isLoadFailure(thrown)) this.props.onError(thrown);
-  }
-
-  render() {
-    const { failed, thrown } = this.state;
-    if (!failed) return this.props.children;
-    // Rethrown as it was thrown, so the app's own boundary sees the original.
-    if (!isLoadFailure(thrown)) throw thrown;
-    return this.props.renderError(thrown, this.props.retry);
-  }
-}
-
-const asError = (cause: unknown): Error =>
-  cause instanceof Error ? cause : new Error(String(cause));
-
-/** Unstyled on purpose. Pass renderError to make it yours. */
-function defaultError(_error: Error, retry: () => void): ReactNode {
-  return (
-    <div role="alert" data-remote-error="">
-      <p>This section could not be loaded.</p>
-      <button type="button" onClick={retry}>
-        Try again
-      </button>
-    </div>
-  );
-}
-`
-}
-
-function svelteRemote(hasComponent: boolean, sentry: boolean): string {
-	const [sentryImport, sentryCall] = sentryReport('svelte', sentry)
-	const bridgeImport = hasComponent ? `\n  import { mountReact } from "../react-bridge";` : ''
-	const mountExpr = hasComponent
-		? `entry.contract === "component"
-          ? mountReact(m.default as never, el, props as Record<string, unknown> | undefined)
-          : (m.default as (el: HTMLElement, props?: object) => () => void)(el, props)`
-		: `(m.default as (el: HTMLElement, props?: object) => () => void)(el, props)`
-	return `<script lang="ts">
-  import { onDestroy } from "svelte";${bridgeImport}
-  ${sentryImport}import { forceReregister } from "./overrides";
-  import { remotes, type RemoteEntry, type RemoteName } from "./remotes";
-
-  export let name: RemoteName;
-  /** Forwarded to the remote's mount(el, props). */
-  export let props: object | undefined = undefined;
-
-  let el: HTMLElement;
-  let cleanup: (() => void) | undefined;
-  let current: string | undefined;
-  let error: Error | undefined;
-  // Bumped on every swap so a load that resolves after a newer one started
-  // (e.g. name changed twice in a row) cannot clobber the current state.
-  let swapToken = 0;
-
-  $: if (el && name !== current) void swap(name);
-
-  async function swap(next: RemoteName) {
-    current = next;
-    error = undefined;
-    cleanup?.();
-    cleanup = undefined;
-    const token = ++swapToken;
-    const entry = remotes[next] as RemoteEntry | undefined;
-    if (!entry) {
-      if (import.meta.env.DEV) {
-        console.warn('[federation] no remote named "' + next + '" in the registry');
-      }
-      return;
-    }
-    try {
-      const m = await entry.load();
-      if (token !== swapToken) return;
-      cleanup = ${mountExpr};
-    } catch (cause) {
-      if (token !== swapToken) return;
-      error = cause instanceof Error ? cause : new Error(String(cause));
-      const name = next;
-      ${sentryCall}
-      console.error('remote "' + next + '" failed to load', cause);
-    }
-  }
-
-  function retry() {
-    // If the entry script is what failed, the runtime holds on to that failure
-    // and never fetches it again unless the remote is re-registered.
-    forceReregister(name);
-    current = undefined;
-    void swap(name);
-  }
-
-  onDestroy(() => cleanup?.());
-</script>
-
-{#if error}
-  <div role="alert" data-remote-error>
-    <p>This section could not be loaded.</p>
-    <button type="button" on:click={retry}>Try again</button>
-  </div>
-{/if}
-<div bind:this={el}></div>
-`
-}
-
-function vueRemote(hasComponent: boolean, sentry: boolean): string {
-	const [sentryImport, sentryCall] = sentryReport('vue', sentry)
-	const bridgeImport = hasComponent ? `\nimport { mountReact } from "../react-bridge";` : ''
-	const mountExpr = hasComponent
-		? `entry.contract === "component"
-        ? mountReact(m.default as never, el.value, attrs.props as Record<string, unknown> | undefined)
-        : (m.default as (el: HTMLElement, props?: object) => () => void)(
-            el.value,
-            attrs.props,
-          )`
-		: `(m.default as (el: HTMLElement, props?: object) => () => void)(
-        el.value,
-        attrs.props,
-      )`
-	return `<script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch, type PropType } from "vue";${bridgeImport}
-${sentryImport}import { forceReregister } from "./overrides";
-import { remotes, type RemoteEntry, type RemoteName } from "./remotes";
-
-const attrs = defineProps({
-  // Through unknown: a host with no remotes yet has no names, which String is not comparable to.
-  name: { type: String as unknown as PropType<RemoteName>, required: true },
-  props: { type: Object as PropType<object>, default: undefined },
-});
-const el = ref<HTMLElement | null>(null);
-const error = ref<Error | null>(null);
-let cleanup: (() => void) | undefined;
-// Bumped on every swap so a load that resolves after a newer one started
-// (e.g. name changed twice in a row) cannot clobber the current state.
-let swapToken = 0;
-
-async function swap(name: RemoteName) {
-  error.value = null;
-  cleanup?.();
-  cleanup = undefined;
-  const token = ++swapToken;
-  const entry = remotes[name] as RemoteEntry | undefined;
-  if (!entry) {
-    if (import.meta.env.DEV) console.warn('[federation] no remote named "' + name + '" in the registry');
-    return;
-  }
-  if (!el.value) return;
-  try {
-    const m = await entry.load();
-    if (token !== swapToken) return;
-    cleanup = ${mountExpr};
-  } catch (cause) {
-    if (token !== swapToken) return;
-    error.value = cause instanceof Error ? cause : new Error(String(cause));
-    ${sentryCall}
-    console.error('remote "' + name + '" failed to load', cause);
-  }
-}
-
-const retry = () => {
-  // If the entry script is what failed, the runtime holds on to that failure
-  // and never fetches it again unless the remote is re-registered.
-  forceReregister(attrs.name);
-  void swap(attrs.name);
-};
-
-onMounted(() => {
-  void swap(attrs.name);
-  watch(() => attrs.name, swap);
-});
-onBeforeUnmount(() => cleanup?.());
-</script>
-
-<template>
-  <div v-if="error" role="alert" data-remote-error>
-    <p>This section could not be loaded.</p>
-    <button type="button" @click="retry">Try again</button>
-  </div>
-  <div ref="el"></div>
-</template>
-`
-}
-
+/*
+ *   COMPOSED HOST
+ ***************************************************************************************************/
 /** A starting route table for the generated shell: the first remote at "/",
  * the rest at "/<name>". Written into the host's own App, which is yours to edit. */
 export function defaultRoutes(names: string[]): Record<string, string> {
@@ -829,6 +207,7 @@ export function defaultRoutes(names: string[]): Record<string, string> {
 	names.forEach((name, i) => {
 		routes[i === 0 ? '/' : `/${name}`] = name
 	})
+
 	return routes
 }
 
@@ -838,102 +217,179 @@ export function compositionHostApp(
 	refs: RemoteRef[],
 ): string {
 	const routes = defaultRoutes(refs.map(r => r.name))
+
 	if (framework === 'svelte') return svelteCompositionHost(appName, routes)
+
 	if (framework === 'vue') return vueCompositionHost(appName, routes)
+
 	return reactCompositionHost(appName, routes)
 }
 
-function routesLiteral(routes: Record<string, string>): string {
-	const entries = Object.entries(routes).map(([path, name]) => `"${path}": "${name}"`)
-	return `{ ${entries.join(', ')} }`
+/** The `routes` declaration, broken over lines once it passes the print width. */
+function routesDeclaration(routes: Record<string, string>, indent: string): string {
+	const entries = Object.entries(routes).map(([path, name]) => `'${path}': '${name}'`)
+	const head = `${indent}const routes: Record<string, RemoteName> =`
+	const oneLine = `${head} { ${entries.join(', ')} }`
+
+	if (!entries.length) return `${head} {}`
+
+	if (fitsOnLine(oneLine)) return oneLine
+
+	const rows = entries.map(entry => `${indent}\t${entry},`).join('\n')
+
+	return `${head} {\n${rows}\n${indent}}`
 }
 
 function reactCompositionHost(appName: string, routes: Record<string, string>): string {
-	return `import { useLocation, navigate, matchRoute } from "@/navigation";
-import { Remote, type RemoteName } from "@/federation";
+	return `import { useLocation, matchRoute, navigateOnClick } from '@/navigation'
+import { Remote, type RemoteName } from '@/federation'
+
+import styles from './app.module.css'
 
 // Map url prefixes to remote names. Edit freely. For a region that stays put,
 // render <Remote name="..." /> outside the routed <main>.
-const routes: Record<string, RemoteName> = ${routesLiteral(routes)};
+${routesDeclaration(routes, '')}
 
 export default function App() {
-  const location = useLocation();
-  const active = matchRoute(location.pathname, routes);
-  return (
-    <div style={{ fontFamily: "system-ui" }}>
-      <nav style={{ display: "flex", gap: 8, padding: 12, borderBottom: "1px solid #ccc" }}>
-        <strong>${appName}</strong>
-        {Object.entries(routes).map(([path, name]) => (
-          <button key={name} onClick={() => navigate(path)}>
-            {name}
-          </button>
-        ))}
-      </nav>
-      <p data-testid="${NAV_PATH_TESTID}" style={{ padding: "8px 12px", color: "#666" }}>
-        {location.pathname}
-      </p>
-      <main style={{ padding: 12 }}>
-        {active ? <Remote name={active} /> : <p>Pick a section above.</p>}
-      </main>
-    </div>
-  );
+	const location = useLocation()
+	const active = matchRoute(location.pathname, routes)
+
+	return (
+		<div className={styles.shell}>
+			<nav className={styles.nav}>
+				<strong>${appName}</strong>
+				{Object.entries(routes).map(([path, name]) => (
+					<a
+						key={name}
+						href={path}
+						aria-current={name === active ? 'page' : undefined}
+						onClick={navigateOnClick}
+					>
+						{name}
+					</a>
+				))}
+			</nav>
+			<p data-testid="${NAV_PATH_TESTID}" className={styles.path}>
+				{location.pathname}
+			</p>
+			<main className={styles.main}>
+				{active ? <Remote name={active} /> : <p>Pick a section above.</p>}
+			</main>
+		</div>
+	)
 }
 `
 }
 
 function svelteCompositionHost(appName: string, routes: Record<string, string>): string {
 	return `<script lang="ts">
-  import { location, navigate, matchRoute } from "@/navigation";
-  import { Remote, type RemoteName } from "@/federation";
+	import { location, matchRoute, navigateOnClick } from '@/navigation'
+	import { Remote, type RemoteName } from '@/federation'
 
-  const routes: Record<string, RemoteName> = ${routesLiteral(routes)};
-  $: active = matchRoute($location.pathname, routes);
+${routesDeclaration(routes, '\t')}
+	const active = $derived(matchRoute(location.current.pathname, routes))
 </script>
 
-<div style="font-family: system-ui;">
-  <nav style="display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #ccc;">
-    <strong>${appName}</strong>
-    {#each Object.entries(routes) as [path, name] (name)}
-      <button on:click={() => navigate(path)}>{name}</button>
-    {/each}
-  </nav>
-  <p data-testid="${NAV_PATH_TESTID}" style="padding: 8px 12px; color: #666;">{$location.pathname}</p>
-  <main style="padding: 12px;">
-    {#if active}
-      <Remote name={active} />
-    {:else}
-      <p>Pick a section above.</p>
-    {/if}
-  </main>
+<div class="shell">
+	<nav>
+		<strong>${appName}</strong>
+		{#each Object.entries(routes) as [path, name] (name)}
+			<a
+				href={path}
+				aria-current={name === active ? 'page' : undefined}
+				onclick={navigateOnClick}
+			>
+				{name}
+			</a>
+		{/each}
+	</nav>
+	<p data-testid="${NAV_PATH_TESTID}" class="path">{location.current.pathname}</p>
+	<main>
+		{#if active}
+			<Remote name={active} />
+		{:else}
+			<p>Pick a section above.</p>
+		{/if}
+	</main>
 </div>
+
+<style>
+	.shell {
+		font-family: system-ui;
+	}
+
+	nav {
+		display: flex;
+		gap: 8px;
+		padding: 12px;
+		border-bottom: 1px solid #ccc;
+	}
+
+	.path {
+		padding: 8px 12px;
+		color: #666;
+	}
+
+	main {
+		padding: 12px;
+	}
+</style>
 `
 }
 
 function vueCompositionHost(appName: string, routes: Record<string, string>): string {
 	return `<script setup lang="ts">
-import { computed } from "vue";
-import { useLocation, navigate, matchRoute } from "@/navigation";
-import { Remote, type RemoteName } from "@/federation";
+import { computed } from 'vue'
+import { useLocation, matchRoute, navigateOnClick } from '@/navigation'
+import { Remote, type RemoteName } from '@/federation'
 
-const routes: Record<string, RemoteName> = ${routesLiteral(routes)};
-const location = useLocation();
-const active = computed(() => matchRoute(location.value.pathname, routes));
+${routesDeclaration(routes, '')}
+const location = useLocation()
+const active = computed(() => matchRoute(location.value.pathname, routes))
 </script>
 
 <template>
-  <div style="font-family: system-ui">
-    <nav style="display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #ccc">
-      <strong>${appName}</strong>
-      <button v-for="(name, path) in routes" :key="name" @click="navigate(path)">{{ name }}</button>
-    </nav>
-    <p :data-testid="'${NAV_PATH_TESTID}'" style="padding: 8px 12px; color: #666">
-      {{ location.pathname }}
-    </p>
-    <main style="padding: 12px">
-      <Remote v-if="active" :name="active" />
-      <p v-else>Pick a section above.</p>
-    </main>
-  </div>
+	<div class="shell">
+		<nav>
+			<strong>${appName}</strong>
+			<a
+				v-for="(name, path) in routes"
+				:key="name"
+				:href="path"
+				:aria-current="name === active ? 'page' : undefined"
+				@click="navigateOnClick"
+			>
+				{{ name }}
+			</a>
+		</nav>
+		<p data-testid="${NAV_PATH_TESTID}" class="path">{{ location.pathname }}</p>
+		<main>
+			<Remote v-if="active" :name="active" />
+			<p v-else>Pick a section above.</p>
+		</main>
+	</div>
 </template>
+
+<style scoped>
+.shell {
+	font-family: system-ui;
+}
+
+nav {
+	display: flex;
+	gap: 8px;
+	padding: 12px;
+	border-bottom: 1px solid #ccc;
+}
+
+.path {
+	padding: 8px 12px;
+	color: #666;
+}
+
+main {
+	padding: 12px;
+}
+</style>
 `
 }

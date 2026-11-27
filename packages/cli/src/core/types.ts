@@ -3,8 +3,7 @@
  ***************************************************************************************************/
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-import { join, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import type { AppConfig, Manifest } from './config.js'
 import { run } from '../util/exec.js'
 import { log } from '../util/logger.js'
@@ -48,13 +47,21 @@ function exposingApps(m: Manifest): [string, AppConfig][] {
 /*
  *   RUNNER
  ***************************************************************************************************/
-/** Resolves tsc from the workspace's own node_modules. Returns undefined if it isn't installed. */
-function resolveTsc(root: string): string | undefined {
-	const requireFromRoot = createRequire(join(root, 'package.json'))
-	try {
-		return requireFromRoot.resolve('typescript/bin/tsc')
-	} catch {
-		return undefined
+/**
+ * Resolves tsc from the workspace's own node_modules, walking up from its root. Node's
+ * `require.resolve` also searches NODE_PATH and the global folders, which would hand a
+ * workspace the CLI's own TypeScript instead of the one it installed.
+ */
+export function resolveTsc(root: string): string | undefined {
+	let dir = resolve(root)
+
+	for (;;) {
+		const candidate = join(dir, 'node_modules', 'typescript', 'bin', 'tsc')
+		if (existsSync(candidate)) return candidate
+
+		const parent = dirname(dir)
+		if (parent === dir) return undefined
+		dir = parent
 	}
 }
 

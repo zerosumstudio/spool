@@ -1,13 +1,22 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import { rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import * as p from '@clack/prompts'
 import { requireWorkspace } from '../core/workspace.js'
 import { editJsonFile } from '../core/packages.js'
-import { HELPER_FILE, MANIFEST_FILE, WORKSPACE_FILE, type Manifest } from '../core/config.js'
+import { MANIFEST_FILE, WORKSPACE_FILE, type Manifest } from '../core/config.js'
+import {
+	EJECTED_HELPER_FILES,
+	VITE_ENTRY,
+	ejectedImport,
+	readBundledHelper,
+} from '../core/ejected-helper.js'
 import { PROVENANCE_FILE } from '../core/provenance.js'
+import { confirmDestructive } from '../util/interactive.js'
+import { assertConfined } from '../util/confine.js'
+import { withoutKey } from '../util/json.js'
 import { log } from '../util/logger.js'
 
 /*
@@ -33,6 +42,8 @@ export async function eject(opts: EjectOptions): Promise<void> {
 		return
 	}
 
+	// Read first: an unreadable helper must fail before anything is changed.
+	const helper = readBundledHelper()
 	const native = nativeScripts(ws.manifest.packageManager)
 	const changes = await editJsonFile(
 		join(ws.root, 'package.json'),
@@ -40,7 +51,7 @@ export async function eject(opts: EjectOptions): Promise<void> {
 			const done: string[] = []
 
 			if (pkg.devDependencies && SPOOL_DEP in pkg.devDependencies) {
-				delete pkg.devDependencies[SPOOL_DEP]
+				pkg.devDependencies = withoutKey(pkg.devDependencies, SPOOL_DEP)
 				done.push(`removed devDependencies["${SPOOL_DEP}"]`)
 			}
 
@@ -52,7 +63,7 @@ export async function eject(opts: EjectOptions): Promise<void> {
 			}
 			for (const script of REMOVED_SCRIPTS) {
 				if (!isSpoolScript(pkg.scripts[script])) continue
-				delete pkg.scripts[script]
+				pkg.scripts = withoutKey(pkg.scripts, script)
 				done.push(`removed scripts.${script}`)
 			}
 
@@ -61,6 +72,16 @@ export async function eject(opts: EjectOptions): Promise<void> {
 		{ root: ws.root },
 	)
 
+	for (const [file, content] of Object.entries(helper.files)) {
+		assertConfined(ws.root, join(ws.root, file))
+		await writeFile(join(ws.root, file), content, 'utf8')
+	}
+	changes.push(
+		`wrote ${EJECTED_HELPER_FILES.join(' and ')}, the vite helper that was ${VITE_ENTRY}`,
+	)
+	changes.push(...(await pointConfigsAtHelper(ws.root, ws.manifest.apps)))
+
+	assertConfined(ws.root, join(ws.root, '.spool'), { allowFinalLink: true })
 	await rm(join(ws.root, '.spool'), { recursive: true, force: true })
 	changes.push(`deleted .spool/ (including ${PROVENANCE_FILE})`)
 
@@ -71,23 +92,37 @@ export async function eject(opts: EjectOptions): Promise<void> {
 		'`spool dev`/`spool build` ran remotes before hosts; the native scripts run every app in whatever order the package manager picks, so wire that ordering yourself (a filtered run per role, or a task runner like turbo/nx) if it matters to your build.',
 	)
 	log.step(
-		`kept, and still yours to use: ${MANIFEST_FILE} (the wiring you are migrating off of), ${HELPER_FILE} and ${WORKSPACE_FILE} (imported by every app's vite config), and every generated file (vite.config.ts, package.json, ...) — eject only removes spool's own dependency, scripts and bookkeeping.`,
+		`kept, and still yours to use: ${MANIFEST_FILE} (the wiring you are migrating off of), ${EJECTED_HELPER_FILES[0]} (read by every app's vite config, now yours) and ${WORKSPACE_FILE}, and every generated file (vite.config.ts, package.json, ...) — eject only removes spool's own dependency, scripts and bookkeeping.`,
 	)
 }
 
 /*
  *   HELPERS
  ***************************************************************************************************/
-async function confirm(yes: boolean): Promise<boolean> {
-	if (yes || !process.stdin.isTTY) return true
+/** Apps import the helper from the workspace root once spool is not installed to provide it. */
+async function pointConfigsAtHelper(root: string, apps: Manifest['apps']): Promise<string[]> {
+	const changes: string[] = []
 
-	const answer = await p.confirm({
-		message:
-			'Remove spool from this workspace? Generated files stay; only its dependency and scripts go.',
-		initialValue: false,
-	})
+	for (const app of Object.values(apps)) {
+		const target = join(root, app.path, 'vite.config.ts')
+		if (!existsSync(target)) continue
 
-	return !p.isCancel(answer) && answer
+		const source = await readFile(target, 'utf8')
+		if (!source.includes(VITE_ENTRY)) continue
+
+		assertConfined(root, target)
+		await writeFile(target, source.replaceAll(VITE_ENTRY, ejectedImport(app.path)), 'utf8')
+		changes.push(`${app.path}/vite.config.ts now imports ${ejectedImport(app.path)}`)
+	}
+
+	return changes
+}
+
+function confirm(yes: boolean): Promise<boolean> {
+	return confirmDestructive(
+		'Remove spool from this workspace? Generated files stay; only its dependency and scripts go.',
+		yes,
+	)
 }
 
 function isSpoolScript(value: string | undefined): boolean {

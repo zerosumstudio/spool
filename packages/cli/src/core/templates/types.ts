@@ -25,11 +25,6 @@ export interface RemoteTypingContext {
 	hostPath: string
 }
 
-export interface MountHint {
-	intro: string
-	lines: string[]
-}
-
 export interface TemplateExtras {
 	stateExample: boolean
 	uiButton: boolean
@@ -68,6 +63,4 @@ export interface FrameworkTemplate {
 	): Record<string, string>
 	/** Extra files a host of this framework needs to mount foreign-framework remotes. */
 	bridgeFiles(refs: RemoteRef[]): Record<string, string>
-	/** How a host of this framework mounts `ref`; printed by `spool add`. */
-	mountHint(ref: RemoteRef, hostName: string): MountHint
 }

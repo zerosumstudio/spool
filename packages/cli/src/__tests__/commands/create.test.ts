@@ -2,7 +2,7 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { create } from '../../commands/create.js'
 import { freshDir, removeDir } from '../helpers.js'
@@ -11,6 +11,7 @@ import { freshDir, removeDir } from '../helpers.js'
  *   TEST SETUP
  ***************************************************************************************************/
 let dir: string
+const cwd = process.cwd()
 
 beforeEach(() => {
 	dir = freshDir('spool-create-')
@@ -57,10 +58,13 @@ describe('create', () => {
 			install: false,
 		})
 
-		expect(existsSync(join(dir, 'spool.vite.ts'))).toBe(true)
+		expect(existsSync(join(dir, 'spool.workspace.ts'))).toBe(true)
+		// The helper ships in the package: nothing is generated for vite or for headers.
+		expect(existsSync(join(dir, 'spool.vite.ts'))).toBe(false)
+		expect(existsSync(join(dir, 'apps/shell/public/_headers'))).toBe(false)
 		expect(existsSync(join(dir, 'apps/shell/vite.config.ts'))).toBe(true)
 		expect(existsSync(join(dir, 'apps/dashboard/vite.config.ts'))).toBe(true)
-		// Wiring is resolved at startup from spool.json, never baked in.
+		// Wiring is resolved when vite loads the config, from spool.json, never baked in.
 		expect(read('apps/shell/vite.config.ts')).toContain("spoolApp('shell'")
 		expect(read('apps/shell/vite.config.ts')).not.toContain('localhost')
 	})
@@ -78,8 +82,66 @@ describe('create', () => {
 		const viteConfig = read('apps/shell/vite.config.ts')
 		expect(viteConfig).toContain("import { defineConfig } from 'vite'")
 		expect(viteConfig).not.toMatch(/;\r?\n/)
-		expect(read('spool.vite.ts')).toContain('\t')
+		expect(read('spool.workspace.ts')).toContain('\t')
 		expect(read('spool.json')).toContain('\t')
+	})
+
+	it('gives every host the federation files and runtime dependency with no addon chosen', async () => {
+		await create(dir, {
+			name: 'acme',
+			pm: 'pnpm',
+			host: 'shell',
+			remotes: 'dashboard',
+			addons: 'none',
+			install: false,
+		})
+
+		expect(existsSync(join(dir, 'apps/shell/src/federation/remotes.ts'))).toBe(true)
+		expect(read('apps/shell/src/federation/remotes.ts')).toContain('dashboard/App')
+		expect(JSON.parse(read('apps/shell/package.json')).dependencies).toHaveProperty(
+			'@module-federation/runtime',
+		)
+		expect(existsSync(join(dir, 'apps/dashboard/src/federation'))).toBe(false)
+		expect(JSON.parse(read('spool.json')).addons).toEqual([])
+	})
+
+	it('refuses federation as an addon name now that it is always on', async () => {
+		await expect(
+			create(dir, {
+				name: 'acme',
+				pm: 'pnpm',
+				host: 'shell',
+				remotes: 'dashboard',
+				addons: 'federation',
+				install: false,
+			}),
+		).rejects.toMatchObject({ code: 'INVALID_VALUE' })
+	})
+
+	it('tells whoever passes the old shell addon name that it was renamed', async () => {
+		await expect(
+			create(dir, {
+				name: 'acme',
+				pm: 'pnpm',
+				host: 'shell',
+				remotes: 'dashboard',
+				addons: 'shell',
+				install: false,
+			}),
+		).rejects.toThrow('renamed to "navigation"')
+	})
+
+	it('refuses --here together with a folder, instead of ignoring the folder', async () => {
+		await expect(
+			create(dir, {
+				name: 'acme',
+				pm: 'pnpm',
+				host: 'shell',
+				remotes: 'dashboard',
+				here: true,
+				install: false,
+			}),
+		).rejects.toMatchObject({ code: 'USAGE' })
 	})
 
 	it('scaffolds per-app frameworks from name:framework specs', async () => {
@@ -96,7 +158,7 @@ describe('create', () => {
 		expect(manifest.apps.dashboard.framework).toBe('vue')
 		// Remotes without an explicit framework follow the host.
 		expect(manifest.apps.profile.framework).toBe('svelte')
-		expect(manifest.shared).toEqual(expect.arrayContaining(['svelte', 'vue']))
+		expect(manifest.shared).toEqual(['vue'])
 		expect(new Set(manifest.shared).size).toBe(manifest.shared.length)
 		expect(existsSync(join(dir, 'apps/shell/src/app/app.svelte'))).toBe(true)
 		expect(existsSync(join(dir, 'apps/dashboard/src/app/app.vue'))).toBe(true)
@@ -168,7 +230,7 @@ describe('create', () => {
 			pm: 'pnpm',
 			host: 'shell',
 			remotes: 'dashboard, profile',
-			addons: 'playwright, federation, state',
+			addons: 'playwright, navigation, state',
 			install: false,
 		})
 
@@ -176,7 +238,7 @@ describe('create', () => {
 		expect(spec).toContain('shell routes to every remote')
 		expect(spec).not.toContain('shell (host)')
 		expect(spec).toContain("toHaveText('/profile')")
-		expect(spec).toContain("getByTestId('shell-path')")
+		expect(spec).toContain("getByTestId('route-path')")
 		expect(spec).toContain('shared state survives switching remotes')
 		expect(JSON.parse(read('packages/e2e/tsconfig.json')).compilerOptions.types).toEqual([
 			'node',
@@ -229,12 +291,12 @@ describe('create', () => {
 			install: false,
 		})
 
-		expect(read('apps/shell/src/app/app.tsx')).toContain('shell-count')
+		expect(read('apps/shell/src/app/app.tsx')).toContain('shared-count')
 		const dash = read('apps/dash/src/app/app.tsx')
 		expect(dash).toContain("import { Button } from 'ui'")
-		expect(dash).toContain('<Button onClick={increment}>Increment</Button>')
+		expect(dash).toContain('<Button onClick={handleIncrement}>Increment</Button>')
 		expect(JSON.parse(read('apps/dash/package.json')).dependencies.ui).toBe('workspace:*')
-		expect(read('apps/widget/src/app/app.svelte')).toContain('counterMachine.mutate')
+		expect(read('apps/widget/src/app/app.svelte')).toContain('counterStore.set(')
 		expect(read('packages/e2e/tests/shell.spec.ts')).toContain('shared state')
 	})
 
@@ -249,7 +311,7 @@ describe('create', () => {
 		})
 
 		const dash = read('apps/dash/src/app/app.tsx')
-		expect(dash).toContain('<button onClick={increment}>Increment</button>')
+		expect(dash).toContain('<button onClick={handleIncrement}>Increment</button>')
 		expect(dash).not.toContain("from 'ui'")
 		expect(JSON.parse(read('apps/dash/package.json')).dependencies.ui).toBeUndefined()
 	})
@@ -352,5 +414,121 @@ describe('create', () => {
 				install: false,
 			}),
 		).rejects.toThrow('pass --name')
+	})
+})
+
+/*
+ *   NAMES AND FOLDERS
+ ***************************************************************************************************/
+describe('create name and folder validation', () => {
+	// Every case passes a folder that exists in tmp, so a regression writes there and nowhere else.
+	const attempt = (name: string, host = 'shell') =>
+		create(dir, { name, pm: 'pnpm', host, remotes: '', install: false })
+
+	it('rejects Windows device names, "a/b" and a path as a workspace name', async () => {
+		for (const name of ['con', 'nul', 'aux', 'prn', 'com1', 'lpt1', 'a/b', '../esc', '..']) {
+			await expect(attempt(name)).rejects.toMatchObject({ code: 'INVALID_NAME' })
+		}
+
+		expect(existsSync(join(dir, 'spool.json'))).toBe(false)
+	})
+
+	it('rejects a device name, "a/b" and a package name as an app name', async () => {
+		for (const host of ['con', 'a/b', 'react']) {
+			await expect(attempt('acme', host)).rejects.toMatchObject({ code: 'INVALID_NAME' })
+		}
+	})
+
+	it('rejects a folder that climbs out, or names a device, before writing anything', async () => {
+		const work = join(dir, 'work')
+		mkdirSync(work)
+		process.chdir(work)
+
+		try {
+			for (const folder of ['../esc', '..', 'con', 'a/con', 'a/../../esc']) {
+				await expect(
+					create(folder, {
+						name: 'acme',
+						pm: 'pnpm',
+						host: 'shell',
+						remotes: '',
+						install: false,
+					}),
+				).rejects.toMatchObject({ code: 'INVALID_PATH' })
+			}
+
+			expect(readdirSync(work)).toEqual([])
+			expect(existsSync(join(dir, 'esc'))).toBe(false)
+		} finally {
+			process.chdir(cwd)
+		}
+	})
+
+	it('stops when the folder already has files, and leaves them alone', async () => {
+		writeFileSync(join(dir, 'notes.txt'), 'mine')
+
+		await expect(attempt('acme')).rejects.toMatchObject({ code: 'TARGET_NOT_EMPTY' })
+		expect(readdirSync(dir)).toEqual(['notes.txt'])
+	})
+
+	it('--here shares a folder but lists every file it would overwrite, and stops', async () => {
+		writeFileSync(join(dir, 'package.json'), '{"mine":true}')
+		writeFileSync(join(dir, 'README.md'), 'mine')
+		process.chdir(dir)
+
+		try {
+			const error = await create(undefined, {
+				here: true,
+				name: 'acme',
+				pm: 'pnpm',
+				host: 'shell',
+				remotes: '',
+				install: false,
+			}).catch((caught: unknown) => caught)
+
+			expect(error).toMatchObject({ code: 'TARGET_NOT_EMPTY' })
+			expect((error as Error).message).toContain('package.json')
+			expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe('{"mine":true}')
+			expect(existsSync(join(dir, 'spool.json'))).toBe(false)
+		} finally {
+			process.chdir(cwd)
+		}
+	})
+
+	it('--here works in a folder that has unrelated files', async () => {
+		writeFileSync(join(dir, 'notes.txt'), 'mine')
+		process.chdir(dir)
+
+		try {
+			await create(undefined, {
+				here: true,
+				name: 'acme',
+				pm: 'pnpm',
+				host: 'shell',
+				remotes: '',
+				install: false,
+			})
+			expect(existsSync(join(dir, 'spool.json'))).toBe(true)
+		} finally {
+			process.chdir(cwd)
+		}
+	})
+})
+
+describe('create without a terminal', () => {
+	it('names the missing flag instead of prompting', async () => {
+		const missing = [
+			[{ name: 'acme', pm: 'pnpm', remotes: '' }, '--host'],
+			[{ name: 'acme', pm: 'pnpm', host: 'shell' }, '--remotes'],
+			[{ name: 'acme', host: 'shell', remotes: '' }, '--pm'],
+			[{ pm: 'pnpm', host: 'shell', remotes: '' }, '--name'],
+		] as const
+
+		for (const [opts, flag] of missing) {
+			await expect(create(undefined, { ...opts, here: true })).rejects.toMatchObject({
+				code: 'INPUT_REQUIRED',
+				message: expect.stringContaining(flag),
+			})
+		}
 	})
 })

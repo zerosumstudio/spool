@@ -6,6 +6,7 @@ import { DEFAULT_FRAMEWORK, type AppConfig, type Framework, type Manifest } from
 import { FRAMEWORK_DEPS } from '../versions.js'
 import type { FileMap } from '../filemap.js'
 import { remoteRefs, type RemoteRef } from './index.js'
+import { formatArrayProperty } from './layout.js'
 
 /*
  *   TYPES
@@ -14,7 +15,7 @@ import { remoteRefs, type RemoteRef } from './index.js'
 const STUB_DIR = 'src/test'
 
 const STUBS: Record<RemoteRef['contract'], string> = {
-	component: `${STUB_DIR}/remote-component.tsx`,
+	component: `${STUB_DIR}/remote-component.ts`,
 	mount: `${STUB_DIR}/remote-mount.ts`,
 }
 
@@ -28,57 +29,74 @@ function frameworkLint(m: Manifest): { imports: string[]; extends: string[]; blo
 	const blocks: string[] = []
 
 	if (used.has('react')) {
-		imports.push('import reactHooks from "eslint-plugin-react-hooks";')
+		imports.push(`import reactHooks from 'eslint-plugin-react-hooks'`)
 		extend.push('reactHooks.configs.flat.recommended')
 	}
+
 	if (used.has('svelte')) {
-		imports.push('import svelte from "eslint-plugin-svelte";')
-		blocks.push(`  {
-    files: ["**/*.svelte"],
-    extends: [svelte.configs.recommended],
-    languageOptions: { parserOptions: { parser: tseslint.parser } },
-  },`)
+		imports.push(`import svelte from 'eslint-plugin-svelte'`)
+		blocks.push(`	{
+		files: ['**/*.svelte'],
+		extends: [tseslint.configs.strictTypeChecked, svelte.configs.recommended],
+		languageOptions: {
+			parserOptions: {
+				parser: tseslint.parser,
+				projectService: true,
+				tsconfigRootDir: import.meta.dirname,
+				extraFileExtensions: ['.svelte'],
+			},
+		},
+	},`)
 	}
+
 	if (used.has('vue')) {
-		imports.push('import vue from "eslint-plugin-vue";')
-		blocks.push(`  {
-    files: ["**/*.vue"],
-    extends: [vue.configs["flat/recommended"]],
-    languageOptions: { parserOptions: { parser: tseslint.parser } },
-    rules: {
-      // Formatting is prettier's job; these disagree with tabs and 100 columns.
-      "vue/html-indent": "off",
-      "vue/max-attributes-per-line": "off",
-      "vue/singleline-html-element-content-newline": "off",
-      "vue/html-self-closing": "off",
-    },
-  },`)
+		imports.push(`import vue from 'eslint-plugin-vue'`)
+		blocks.push(`	{
+		files: ['**/*.vue'],
+		extends: [tseslint.configs.strictTypeChecked, vue.configs['flat/recommended']],
+		languageOptions: {
+			parserOptions: {
+				parser: tseslint.parser,
+				projectService: true,
+				tsconfigRootDir: import.meta.dirname,
+				extraFileExtensions: ['.vue'],
+			},
+		},
+		rules: {
+			// app.vue and Remote.vue are the names every template and import expects.
+			'vue/multi-word-component-names': 'off',
+			// Formatting is prettier's job; these disagree with tabs and 100 columns.
+			'vue/html-indent': 'off',
+			'vue/max-attributes-per-line': 'off',
+			'vue/singleline-html-element-content-newline': 'off',
+			'vue/html-self-closing': 'off',
+		},
+	},`)
 	}
+
 	return { imports, extends: extend, blocks }
 }
 
 export function eslintConfig(m: Manifest): string {
 	const { imports, extends: extend, blocks } = frameworkLint(m)
-	const shared = ['js.configs.recommended', 'tseslint.configs.recommendedTypeChecked', ...extend]
+	const shared = ['js.configs.recommended', 'tseslint.configs.strictTypeChecked', ...extend]
 
-	return `import js from "@eslint/js";
-import globals from "globals";
-import tseslint from "typescript-eslint";
-${imports.join('\n')}${imports.length ? '\n' : ''}import { defineConfig, globalIgnores } from "eslint/config";
+	return `import js from '@eslint/js'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
+${imports.join('\n')}${imports.length ? '\n' : ''}import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(["**/dist", "**/coverage", "**/test-results", "**/.ladle", ".spool"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-${shared.map(entry => `      ${entry},`).join('\n')}
-    ],
-    languageOptions: {
-      globals: { ...globals.browser, ...globals.node },
-      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
-    },
-  },
-${blocks.join('\n')}${blocks.length ? '\n' : ''}]);
+	globalIgnores(['**/dist', '**/coverage', '**/test-results', '**/.ladle', '.spool']),
+	{
+		files: ['**/*.{ts,tsx}'],
+${formatArrayProperty('extends', shared, 2)}
+		languageOptions: {
+			globals: { ...globals.browser, ...globals.node },
+			parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+		},
+	},
+${blocks.join('\n')}${blocks.length ? '\n' : ''}])
 `
 }
 
@@ -94,7 +112,7 @@ export function remoteAliasModule(m: Manifest, app: AppConfig): string {
 	const entries = refs.flatMap(ref =>
 		ref.exposes.map(
 			expose =>
-				`  "${ref.name}/${expose}": resolvePath(here, "${basename(STUBS[ref.contract])}"),`,
+				`	'${ref.name}/${expose}': resolvePath(here, '${basename(STUBS[ref.contract])}'),`,
 		),
 	)
 
@@ -105,49 +123,49 @@ export function remoteAliasModule(m: Manifest, app: AppConfig): string {
 
 // Nothing to stub: this app consumes no remotes. Add your own aliases in
 // vitest.config.ts, not here.
-export const remoteAliases: Record<string, string> = {};
+export const remoteAliases: Record<string, string> = {}
 `
 	}
 
 	return `// Generated by spool. Regenerated whenever this app\u2019s remotes change.
-import { resolve as resolvePath } from "node:path";
+import { resolve as resolvePath } from 'node:path'
 
-const here = import.meta.dirname;
+const here = import.meta.dirname
 
 // Federation cannot resolve a remote under vitest, so each one points at a
 // stub you can edit. Add your own aliases in vitest.config.ts, not here.
 export const remoteAliases: Record<string, string> = {
 ${entries.join('\n')}
-};
+}
 `
 }
 
 export function vitestConfig(framework: Framework = DEFAULT_FRAMEWORK): string {
-	return `import { defineConfig } from "vitest/config";
-import { resolve as resolvePath } from "node:path";
-import { remoteAliases } from "./src/test/remotes.alias";
+	return `import { defineConfig } from 'vitest/config'
+import { resolve as resolvePath } from 'node:path'
+import { remoteAliases } from './src/test/remotes.alias'
 
 // Yours to edit. Spool only regenerates src/test/remotes.alias.ts.
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@": resolvePath(import.meta.dirname, "src"),
-      ...remoteAliases,
-    },
-    // dedupe keeps one copy of the framework when a linked library brings its own.
-    dedupe: ${JSON.stringify(FRAMEWORK_DEPS[framework].dependencies)},
-  },
-  test: {
-    environment: "happy-dom",
-    include: ["src/**/*.test.{ts,tsx}"],
-    passWithNoTests: true,
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "html"],
-      exclude: ["**/*.d.ts", "**/*.config.*", "**/*.test.*", "src/test/**"],
-    },
-  },
-});
+	resolve: {
+		alias: {
+			'@': resolvePath(import.meta.dirname, 'src'),
+			...remoteAliases,
+		},
+		// dedupe keeps one copy of the framework when a linked library brings its own.
+		dedupe: [${FRAMEWORK_DEPS[framework].dependencies.map(dep => `'${dep}'`).join(', ')}],
+	},
+	test: {
+		environment: 'happy-dom',
+		include: ['src/**/*.test.{ts,tsx}'],
+		passWithNoTests: true,
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'html'],
+			exclude: ['**/*.d.ts', '**/*.config.*', '**/*.test.*', 'src/test/**'],
+		},
+	},
+})
 `
 }
 
@@ -157,15 +175,20 @@ export function remoteStubs(m: Manifest, app: AppConfig): FileMap {
 	const files: FileMap = {}
 	for (const ref of remoteRefs(m, app)) {
 		if (files[STUBS[ref.contract]]) continue
+
 		files[STUBS[ref.contract]] = ref.contract === 'component' ? componentStub() : mountStub()
 	}
+
 	return files
 }
 
+// No JSX, so a Vue or Svelte host with a React remote needs no jsx setting in its tsconfig.
 function componentStub(): string {
-	return `// Stands in for a federated remote during tests. Edit freely.
+	return `import { createElement } from 'react'
+
+// Stands in for a federated remote during tests. Edit freely.
 export default function RemoteStub() {
-  return <div data-testid="remote-stub" />;
+	return createElement('div', { 'data-testid': 'remote-stub' })
 }
 `
 }
@@ -173,10 +196,11 @@ export default function RemoteStub() {
 function mountStub(): string {
 	return `// Stands in for a federated remote during tests. Edit freely.
 export default function mount(el: HTMLElement): () => void {
-  el.innerHTML = '<div data-testid="remote-stub"></div>';
-  return () => {
-    el.innerHTML = "";
-  };
+	el.innerHTML = '<div data-testid="remote-stub"></div>'
+
+	return () => {
+		el.innerHTML = ''
+	}
 }
 `
 }
@@ -192,7 +216,9 @@ export const TEST_SCRIPTS = {
 
 export function typeCheckAll(m: Manifest): string {
 	if (m.packageManager === 'npm') return 'npm run type-check --workspaces --if-present'
+
 	if (m.packageManager === 'yarn') return 'yarn workspaces foreach -A run type-check'
+
 	return 'pnpm -r type-check'
 }
 

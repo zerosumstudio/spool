@@ -1,9 +1,12 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		"outDir": "dist",
-		"rootDir": "src",
 		"types": ["node"]
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": [
+		"src/core/templates/federation",
+		"src/core/templates/navigation",
+		"src/core/templates/sentry"
+	]
 }

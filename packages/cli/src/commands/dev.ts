@@ -5,8 +5,8 @@ import { requireWorkspace } from '../core/workspace.js'
 import { devAll, killRunning, type RestSpec } from '../core/orchestrator.js'
 import { emitRemoteTypes } from '../core/types.js'
 import { syncRemoteTypings } from '../core/typings.js'
-import { splitList } from '../util/names.js'
-import { fail } from '../util/logger.js'
+import { CliError } from '../util/errors.js'
+import { ENV_NAME, splitList } from '../util/names.js'
 
 /*
  *   DEV
@@ -19,14 +19,23 @@ export interface DevOptions {
 	kill?: boolean
 }
 
-function parseRest(value: string): RestSpec {
-	return value === 'built' ? { kind: 'built' } : { kind: 'env', env: value }
+/** `built` previews dist folders; `env:<name>` points at a deployed environment. */
+export function parseRest(value: string): RestSpec {
+	if (value === 'built') return { kind: 'built' }
+
+	const env = value.startsWith('env:') ? value.slice(4) : undefined
+	if (env !== undefined && ENV_NAME.test(env)) return { kind: 'env', env }
+
+	throw new CliError(`--rest takes "built" or "env:<name>", not "${value}".`, 'INVALID_VALUE')
 }
 
 function parseTimeout(value: string): number {
 	const seconds = Number(value)
 	if (!Number.isFinite(seconds) || seconds <= 0) {
-		fail(`--timeout needs a positive number of seconds, not "${value}".`)
+		throw new CliError(
+			`--timeout needs a positive number of seconds, not "${value}".`,
+			'INVALID_VALUE',
+		)
 	}
 	return seconds
 }

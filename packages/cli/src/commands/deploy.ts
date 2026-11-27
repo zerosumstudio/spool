@@ -3,8 +3,8 @@
  ***************************************************************************************************/
 import { requireWorkspace } from '../core/workspace.js'
 import { deployAll, type AppRunResult } from '../core/orchestrator.js'
-import { splitList } from '../util/names.js'
-import { log } from '../util/logger.js'
+import { withData, CliError } from '../util/errors.js'
+import { ENV_NAME, splitList } from '../util/names.js'
 
 /*
  *   DEPLOY
@@ -15,23 +15,28 @@ export interface DeployOptions {
 	json?: boolean
 }
 
-export async function deploy(opts: DeployOptions): Promise<void> {
-	log.useStdout()
+export interface DeployResult {
+	results: AppRunResult[]
+}
 
+export async function deploy(opts: DeployOptions): Promise<DeployResult> {
 	const ws = await requireWorkspace()
 	const only = opts.only === undefined ? undefined : splitList(opts.only)
 	const env = (opts.env ?? process.env.SPOOL_ENV) || undefined
 
-	if (!opts.json) {
-		await deployAll(ws, only, env)
-		return
+	if (env !== undefined && !ENV_NAME.test(env)) {
+		throw new CliError(
+			`--env "${env}" is not a valid environment name. Use letters, digits, "-" and "_", starting with a letter or digit.`,
+			'INVALID_VALUE',
+		)
 	}
 
-	log.useStderr()
 	const results: AppRunResult[] = []
 	try {
 		await deployAll(ws, only, env, result => results.push(result))
-	} finally {
-		for (const result of results) process.stdout.write(`${JSON.stringify(result)}\n`)
+	} catch (error) {
+		throw withData(error, { results })
 	}
+
+	return { results }
 }

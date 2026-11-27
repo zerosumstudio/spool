@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { create } from '../../commands/create.js'
 import { doctor } from '../../commands/doctor.js'
+import type { CliError } from '../../util/errors.js'
 import { log } from '../../util/logger.js'
 import { freshDir, removeDir } from '../helpers.js'
 
@@ -278,20 +279,24 @@ describe('doctor: port already in use', () => {
  *   --JSON
  ***************************************************************************************************/
 describe('doctor --json', () => {
-	it('prints one object with a problems array shaped for machine consumption', async () => {
+	const collide = (): void => {
 		const manifest = readJson('spool.json')
+
 		manifest.apps.dashboard.port = manifest.apps.shell.port
 		writeJson('spool.json', manifest)
+	}
+
+	it('carries a problems array shaped for machine consumption on the failure', async () => {
+		collide()
 
 		const plain = vi.spyOn(log, 'plain').mockImplementation(() => {})
-		await doctor({ json: true })
+		const error = (await doctor({ json: true }).catch((caught: unknown) => caught)) as CliError
+		const problems = error.data?.problems as unknown[]
 
-		const printed = plain.mock.calls.map(call => String(call[0])).join('\n')
-		const parsed = JSON.parse(printed) as { problems: unknown[] }
-
-		expect(Array.isArray(parsed.problems)).toBe(true)
-		expect(parsed.problems.length).toBeGreaterThan(0)
-		expect(parsed.problems[0]).toMatchObject({
+		expect(plain).not.toHaveBeenCalled()
+		expect(Array.isArray(problems)).toBe(true)
+		expect(problems.length).toBeGreaterThan(0)
+		expect(problems[0]).toMatchObject({
 			level: expect.any(String),
 			code: expect.any(String),
 			app: expect.any(String),
@@ -299,14 +304,18 @@ describe('doctor --json', () => {
 		})
 	})
 
-	it('sets the exit code from --json output too', async () => {
-		const manifest = readJson('spool.json')
-		manifest.apps.dashboard.port = manifest.apps.shell.port
-		writeJson('spool.json', manifest)
+	it('fails with CHECK_FAILED under --json too', async () => {
+		collide()
 
-		vi.spyOn(log, 'plain').mockImplementation(() => {})
-		await doctor({ json: true })
+		await expect(doctor({ json: true })).rejects.toMatchObject({
+			code: 'CHECK_FAILED',
+			data: { problems: expect.any(Array) },
+		})
+	})
 
-		expect(process.exitCode).toBe(1)
+	it('returns the problems of a workspace without errors, warnings included', async () => {
+		const { problems } = await doctor({ json: true })
+
+		expect(problems.some(problem => problem.level === 'error')).toBe(false)
 	})
 })

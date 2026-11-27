@@ -6,6 +6,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { create } from '../../commands/create.js'
+import { spoolApp } from '../../vite/app.js'
 import { freshDir, removeDir } from '../helpers.js'
 
 /*
@@ -96,6 +97,10 @@ describe('spool.workspace.ts', () => {
 /*
  *   SHARED DEV SERVER CONFIG
  ***************************************************************************************************/
+/** The target of a proxy entry written as an object. */
+const proxyTarget = (app: ReturnType<typeof spoolApp>): unknown =>
+	(app.server.proxy?.['/api'] as { target: string } | undefined)?.target
+
 describe('manifest server config', () => {
 	const withServer = (server: unknown) => {
 		const manifest = readJson('spool.json')
@@ -105,18 +110,18 @@ describe('manifest server config', () => {
 
 	it('reaches every app without touching a vite config', async () => {
 		withServer({ proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } } })
-		const { spoolApp } = await load('spool.vite.ts')
 
 		for (const name of ['shell', 'dashboard']) {
-			const app = spoolApp(name, join(dir, 'apps', name === 'shell' ? 'shell' : 'dashboard'))
-			expect(app.server.proxy['/api'].target).toBe('http://localhost:3000')
+			const app = spoolApp(name, {
+				root: join(dir, 'apps', name === 'shell' ? 'shell' : 'dashboard'),
+			})
+			expect(proxyTarget(app)).toBe('http://localhost:3000')
 		}
 	})
 
 	it('keeps the port the app entry owns and spool’s own defaults', async () => {
 		withServer({ headers: { 'X-Frame-Options': 'DENY' } })
-		const { spoolApp } = await load('spool.vite.ts')
-		const app = spoolApp('dashboard', join(dir, 'apps/dashboard'))
+		const app = spoolApp('dashboard', { root: join(dir, 'apps/dashboard') })
 
 		expect(app.server.port).toBe(5174)
 		expect(app.server.strictPort).toBe(true)
@@ -129,33 +134,32 @@ describe('manifest server config', () => {
 	})
 
 	it('lets the manifest override a spool default', async () => {
-		withServer({ cors: false })
-		const { spoolApp } = await load('spool.vite.ts')
+		withServer({ cors: ['https://admin.example.com'] })
 
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.cors).toBe(false)
+		expect(spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.cors).toEqual({
+			origin: ['https://admin.example.com'],
+		})
 	})
 
 	it('expands the environment, with a fallback when it is unset', async () => {
-		withServer({ proxy: { '/api': { target: '${ACME_BACKEND:-http://localhost:3000}' } } })
-		const { spoolApp } = await load('spool.vite.ts')
+		withServer({ proxy: { '/api': { target: '${VITE_ACME_BACKEND:-http://localhost:3000}' } } })
 
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.proxy['/api'].target).toBe(
+		expect(proxyTarget(spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }))).toBe(
 			'http://localhost:3000',
 		)
 
-		process.env.ACME_BACKEND = 'https://api.example.com'
+		process.env.VITE_ACME_BACKEND = 'https://api.example.com'
 		try {
-			expect(
-				spoolApp('dashboard', join(dir, 'apps/dashboard')).server.proxy['/api'].target,
-			).toBe('https://api.example.com')
+			expect(proxyTarget(spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }))).toBe(
+				'https://api.example.com',
+			)
 		} finally {
-			delete process.env.ACME_BACKEND
+			delete process.env.VITE_ACME_BACKEND
 		}
 	})
 
 	it('adds nothing when the manifest says nothing', async () => {
-		const { spoolApp } = await load('spool.vite.ts')
-		const app = spoolApp('dashboard', join(dir, 'apps/dashboard'))
+		const app = spoolApp('dashboard', { root: join(dir, 'apps/dashboard') })
 
 		expect(app.server).toEqual({
 			port: 5174,
@@ -165,7 +169,8 @@ describe('manifest server config', () => {
 			},
 			headers: {
 				'X-Content-Type-Options': 'nosniff',
-				'Content-Security-Policy': "frame-ancestors 'self'",
+				'Content-Security-Policy':
+					"frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
 			},
 		})
 	})
@@ -180,11 +185,10 @@ describe('server.fs.allow', () => {
 
 	it('keeps the workspace root and resolves entries against it, for every app', async () => {
 		withFsAllow(['../contracts/packages'])
-		const { spoolApp } = await load('spool.vite.ts')
 		const contracts = resolve(dir, '../contracts/packages')
 
 		for (const name of ['shell', 'dashboard']) {
-			expect(spoolApp(name, join(dir, 'apps', name)).server.fs).toEqual({
+			expect(spoolApp(name, { root: join(dir, 'apps', name) }).server.fs).toEqual({
 				allow: [dir, contracts],
 			})
 		}
@@ -193,12 +197,10 @@ describe('server.fs.allow', () => {
 	it('keeps absolute entries as they are and drops duplicates', async () => {
 		const shared = resolve(dir, '../shared')
 		withFsAllow([shared, '.', shared])
-		const { spoolApp } = await load('spool.vite.ts')
 
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs.allow).toEqual([
-			dir,
-			shared,
-		])
+		expect(
+			spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.fs?.allow,
+		).toEqual([dir, shared])
 	})
 
 	it('finds the workspace root the way vite does when it is not where spool.json is', async () => {
@@ -208,58 +210,56 @@ describe('server.fs.allow', () => {
 		const pkg = readJson('package.json')
 		pkg.workspaces = ['apps/*']
 		writeJson('package.json', pkg)
-		const { spoolApp } = await load('spool.vite.ts')
 
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs.allow[0]).toBe(dir)
+		expect(
+			spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.fs?.allow[0],
+		).toBe(dir)
 
 		delete pkg.workspaces
 		writeJson('package.json', pkg)
 		// With no workspace marker anywhere vite falls back to the nearest package.json.
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs.allow[0]).toBe(
-			join(dir, 'apps/dashboard'),
-		)
+		expect(
+			spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.fs?.allow[0],
+		).toBe(join(dir, 'apps/dashboard'))
 	})
 
 	it('expands the environment in entries', async () => {
 		withFsAllow(['${ACME_CONTRACTS:-../contracts}'])
-		const { spoolApp } = await load('spool.vite.ts')
 
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs.allow[1]).toBe(
-			resolve(dir, '../contracts'),
-		)
+		expect(
+			spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.fs?.allow[1],
+		).toBe(resolve(dir, '../contracts'))
 	})
 
 	it('refuses an entry that ends up empty or at the filesystem root', async () => {
-		const { spoolApp } = await load('spool.vite.ts')
-
 		withFsAllow(['${ACME_UNSET_DIR}'])
-		expect(() => spoolApp('dashboard', join(dir, 'apps/dashboard'))).toThrow(
+		expect(() => spoolApp('dashboard', { root: join(dir, 'apps/dashboard') })).toThrow(
 			/server\.fs\.allow/,
 		)
 
 		withFsAllow(['../'.repeat(dir.split(/[\\/]/).length + 2)])
-		expect(() => spoolApp('dashboard', join(dir, 'apps/dashboard'))).toThrow(/filesystem root/)
+		expect(() => spoolApp('dashboard', { root: join(dir, 'apps/dashboard') })).toThrow(
+			/filesystem root/,
+		)
 	})
 
 	it('leaves fs.deny to vite', async () => {
 		withFsAllow(['../contracts'])
-		const { spoolApp } = await load('spool.vite.ts')
 
-		expect(spoolApp('dashboard', join(dir, 'apps/dashboard')).server.fs).not.toHaveProperty(
-			'deny',
-		)
+		expect(
+			spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.fs,
+		).not.toHaveProperty('deny')
 	})
 })
 
 describe('edge-owned frame-ancestors', () => {
-	it('sends no CSP from the dev server when the edge owns it', async () => {
+	it('leaves frame-ancestors out of the dev server policy when the edge owns it', async () => {
 		const manifest = readJson('spool.json')
 		manifest.apps.dashboard.frameAncestors = ['edge']
 		writeJson('spool.json', manifest)
-		const { spoolApp } = await load('spool.vite.ts')
 
-		const headers = spoolApp('dashboard', join(dir, 'apps/dashboard')).server.headers
-		expect(headers['Content-Security-Policy']).toBeUndefined()
+		const headers = spoolApp('dashboard', { root: join(dir, 'apps/dashboard') }).server.headers
+		expect(headers['Content-Security-Policy']).toBe("object-src 'none'; base-uri 'self'")
 		expect(headers['X-Content-Type-Options']).toBe('nosniff')
 	})
 })
