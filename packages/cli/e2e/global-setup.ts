@@ -175,7 +175,7 @@ async function scaffold(root: string): Promise<string> {
 			'--pm',
 			'pnpm',
 			'--addons',
-			'federation,navigation',
+			'navigation',
 			'--no-install',
 		],
 		root,
