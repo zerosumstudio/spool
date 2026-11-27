@@ -1,5 +1,7 @@
 # spool
 
+> **This package has moved to [`@zerosumstudio/spool`](https://www.npmjs.com/package/@zerosumstudio/spool).** `@bkincz/spool` is no longer maintained and won't get updates or fixes. To upgrade, follow the [migration guide](https://github.com/zerosumstudio/spool/blob/main/docs/migration-1.0.md).
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 spool is a small CLI for building micro frontends. It scaffolds a monorepo of Module Federation apps on Vite, runs them together with one command, and keeps all the wiring in a single `spool.json`. Describe your apps once and spool handles the rest.
