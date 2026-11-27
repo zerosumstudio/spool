@@ -52,8 +52,8 @@ export class RemoteError extends Error {
 	readonly code: RemoteErrorCode
 	/** The registry key or import id that was being loaded. */
 	readonly remote: string
-	/** The remote's entry had loaded before this failed. WebKit keeps a failed module
-	 * import for the life of the page, so only a reload can fix it. */
+	/** This id failed again after its entry had loaded. WebKit keeps a failed module import
+	 * for the life of the page, so only a reload can fix it. The first failure is worth a retry. */
 	readonly needsReload: boolean
 
 	constructor(
@@ -96,6 +96,8 @@ const entries: RemoteEntries = (page.__spoolRemoteEntries ??= {
 // the page, even a rejected one, so an id whose import has failed goes to the
 // runtime from then on.
 const failedImports = new Set<string>()
+// Ids that have failed once with their entry loaded, so a second failure means a reload.
+const failedChunks = new Set<string>()
 // Loads this bundle has started and not finished, by remote name.
 const inFlight = new Map<string, number>()
 const warnedUnknown = new Set<string>()
@@ -187,6 +189,16 @@ function hasLoadedEntry(name: string): boolean {
 	return Boolean(module.remoteEntryExports) || entries.loadedFrom.has(module.remoteInfo.entry)
 }
 
+/** Records a failure of `id` and says whether it is the second one with the entry loaded. */
+function isRepeatChunkFailure(id: string): boolean {
+	if (!hasLoadedEntry(getRemoteName(id))) return false
+
+	const isRepeat = failedChunks.has(id)
+	failedChunks.add(id)
+
+	return isRepeat
+}
+
 /** Re-registers a remote whose entry script failed to load, so the runtime
  * drops the failure it keeps and fetches the entry again. Leaves a remote alone
  * while it is loading, once its entry has loaded anywhere on the page, and when
@@ -256,11 +268,11 @@ export function toRemoteError(id: string, cause: unknown): RemoteError {
 		return new RemoteError('NOT_FOUND', id, { cause })
 	}
 
-	const needsReload = hasLoadedEntry(name)
+	const hasEntry = hasLoadedEntry(name)
 
-	return new RemoteError(needsReload ? 'CHUNK_FAILED' : 'ENTRY_FAILED', id, {
+	return new RemoteError(hasEntry ? 'CHUNK_FAILED' : 'ENTRY_FAILED', id, {
 		cause,
-		needsReload,
+		needsReload: isRepeatChunkFailure(id),
 	})
 }
 
@@ -307,7 +319,7 @@ export function loadRemote<Module = RemoteModule>(
 
 			// The count has to drop here, or forceReregister skips this remote for good.
 			settle()
-			const needsReload = hasLoadedEntry(name)
+			const needsReload = isRepeatChunkFailure(id)
 			abandonLoad(name)
 			failedImports.add(id)
 			reject(
@@ -325,6 +337,7 @@ export function loadRemote<Module = RemoteModule>(
 				if (isSettled) return
 
 				settle()
+				failedChunks.delete(id)
 				resolve(module)
 			},
 			(cause: unknown) => {

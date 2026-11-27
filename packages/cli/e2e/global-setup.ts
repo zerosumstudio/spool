@@ -63,17 +63,17 @@ function record(log: string, value: unknown) {
 }
 
 class AppBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-	state = { failed: false }
+	override state = { failed: false }
 
 	static getDerivedStateFromError() {
 		return { failed: true }
 	}
 
-	componentDidCatch(thrown: unknown) {
+	override componentDidCatch(thrown: unknown) {
 		record('__appCaught', thrown)
 	}
 
-	render() {
+	override render() {
 		return this.state.failed ? <p data-testid="app-error">the app boundary caught it</p> : this.props.children
 	}
 }

@@ -495,22 +495,77 @@ describe('RemoteError', () => {
 		).rejects.toMatchObject({ code: 'ENTRY_FAILED', needsReload: false })
 	})
 
-	it('is CHUNK_FAILED and needs a reload once the entry has loaded', async () => {
+	it('is CHUNK_FAILED once the entry has loaded, and the first failure is worth a retry', async () => {
 		const instance = installInstance([assessments])
 		cacheModule(instance, {})
 		const { loadRemote } = await freshCore()
 
 		const error = await loadRemote('assessments/NewAssessment', {
 			importRemote: () =>
-				Promise.reject(new Error('Failed to fetch dynamically isImported module')),
+				Promise.reject(new Error('Failed to fetch dynamically imported module')),
 		}).catch((cause: unknown) => cause)
 
 		expect(error).toMatchObject({
 			name: 'RemoteError',
 			code: 'CHUNK_FAILED',
-			needsReload: true,
+			needsReload: false,
 		})
 		expect(error).toBeInstanceOf(Error)
+	})
+
+	it('needs a reload when the same id fails again after its entry loaded, as in WebKit', async () => {
+		const instance = installInstance([assessments])
+		cacheModule(instance, {})
+		const { loadRemote } = await freshCore()
+		const importRemote = () =>
+			Promise.reject(new Error('Failed to fetch dynamically imported module'))
+		await expect(
+			loadRemote('assessments/NewAssessment', { importRemote }),
+		).rejects.toMatchObject({
+			needsReload: false,
+		})
+		// The retry goes to the runtime, which hands back the failed import it cached.
+		instance.loadRemote.mockRejectedValueOnce(new Error('cached failed import'))
+
+		await expect(
+			loadRemote('assessments/NewAssessment', { importRemote }),
+		).rejects.toMatchObject({
+			code: 'CHUNK_FAILED',
+			needsReload: true,
+		})
+	})
+
+	it('counts failures per id, so another expose of the loaded remote still gets a retry', async () => {
+		const instance = installInstance([assessments])
+		cacheModule(instance, {})
+		const { loadRemote } = await freshCore()
+
+		await expect(
+			loadRemote('assessments/NewAssessment', { importRemote: failedEntry }),
+		).rejects.toMatchObject({ needsReload: false })
+		await expect(
+			loadRemote('assessments/Panel', { importRemote: failedEntry }),
+		).rejects.toMatchObject({ needsReload: false })
+	})
+
+	it('forgets a failure once the id loads', async () => {
+		const instance = installInstance([assessments])
+		cacheModule(instance, {})
+		const { loadRemote } = await freshCore()
+		await loadRemote('assessments/NewAssessment', { importRemote: failedEntry }).catch(
+			() => undefined,
+		)
+		await expect(
+			loadRemote('assessments/NewAssessment', { importRemote: failedEntry }),
+		).resolves.toEqual({
+			default: 'runtime:assessments/NewAssessment',
+		})
+
+		instance.loadRemote.mockRejectedValueOnce(new Error('broke later'))
+
+		await expect(
+			loadRemote('assessments/NewAssessment', { importRemote: failedEntry }),
+		).rejects.toMatchObject({ needsReload: false })
 	})
 
 	it('counts an entry another host on the page loaded', async () => {
@@ -526,7 +581,7 @@ describe('RemoteError', () => {
 
 		await expect(
 			loadRemote('assessments/NewAssessment', { importRemote: failedEntry }),
-		).rejects.toMatchObject({ code: 'CHUNK_FAILED', needsReload: true })
+		).rejects.toMatchObject({ code: 'CHUNK_FAILED', needsReload: false })
 	})
 })
 
@@ -694,16 +749,23 @@ describe('loadRemote timeout', () => {
 		expect(await attempt(plugin, 'loads')).toBe(`${ENTRY}?spool-retry=1`)
 	})
 
-	it('needs a reload when the entry had loaded and a chunk hung', async () => {
+	it('needs a reload when a chunk of a loaded remote hangs twice, and a retry the first time', async () => {
 		const instance = installInstance([assessments])
 		cacheModule(instance, {})
 		const { loadRemote } = await freshCore()
-		const hung = loadRemote('assessments/Panel', { importRemote: neverSettles, timeoutMs: 10 })
-		const assertion = expect(hung).rejects.toMatchObject({ code: 'TIMEOUT', needsReload: true })
+		// The retry goes to the runtime, which hangs on the same chunk.
+		instance.loadRemote.mockImplementation(neverSettles)
 
-		await vi.advanceTimersByTimeAsync(10)
+		for (const needsReload of [false, true]) {
+			const hung = loadRemote('assessments/Panel', {
+				importRemote: neverSettles,
+				timeoutMs: 10,
+			})
+			const assertion = expect(hung).rejects.toMatchObject({ code: 'TIMEOUT', needsReload })
 
-		await assertion
+			await vi.advanceTimersByTimeAsync(10)
+			await assertion
+		}
 	})
 
 	it('ignores a load that settles after it timed out', async () => {
