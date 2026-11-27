@@ -1,12 +1,14 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import { mkdir, writeFile, readFile, access } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, access, rm } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import * as p from '@clack/prompts'
+import { canPrompt } from '../util/interactive.js'
 import type { FileMap } from './filemap.js'
 import { sameContent, type Provenance } from './provenance.js'
+import { assertConfined } from '../util/confine.js'
 import { log } from '../util/logger.js'
 
 /*
@@ -37,6 +39,7 @@ export async function writeFiles(
 	const results = await Promise.all(
 		Object.entries(files).map(async ([rel, content]): Promise<[string, boolean]> => {
 			const target = join(baseDir, rel)
+			assertConfined(baseDir, target)
 			if (!opts.force && (await exists(target))) return [rel, false]
 
 			await mkdir(dirname(target), { recursive: true })
@@ -96,6 +99,7 @@ export class OwnedWriter {
 	/** Writes unconditionally; used internally once ownership has cleared. */
 	async replace(dir: string, rel: string, content: string, label: string): Promise<void> {
 		const target = join(dir, rel)
+		assertConfined(this.root, target)
 		const existing = existsSync(target) ? await readFile(target, 'utf8') : null
 		if (existing !== null && sameContent(existing, content)) return
 
@@ -118,6 +122,7 @@ export class OwnedWriter {
 		label: string,
 	): Promise<void> {
 		const target = join(dir, rel)
+		assertConfined(this.root, target)
 		if (existsSync(target)) {
 			const existing = await readFile(target, 'utf8')
 
@@ -185,7 +190,7 @@ export class OwnedWriter {
 			return this.overwriteAll
 		}
 
-		if (!process.stdin.isTTY) {
+		if (!canPrompt()) {
 			log.warn(
 				`${label}: ${rel} ${REASONS[reason]}, leaving it alone. Rerun with --force to overwrite.`,
 			)
@@ -232,7 +237,39 @@ export class OwnedWriter {
 		this.skipped++
 	}
 
+	/**
+	 * Deletes a generated file spool no longer writes. Only one that is still byte for byte
+	 * what spool wrote goes; an edited or unrecorded file is yours, unless --force names it.
+	 */
+	async remove(dir: string, rel: string, label: string): Promise<void> {
+		const target = join(dir, rel)
+		assertConfined(this.root, target)
+		if (!existsSync(target)) return
+
+		const existing = await readFile(target, 'utf8')
+		const ownership = this.provenance?.ownership(dir, rel, existing) ?? 'unknown'
+		const ours = ownership === 'ours' || (ownership === 'unknown' && isLegacyOutput(existing))
+
+		if (!ours && !this.forces(dir, rel)) {
+			log.step(
+				`${label}: ${rel} is no longer generated and looks edited; delete it yourself.`,
+			)
+			this.skipped++
+
+			return
+		}
+
+		this.changed++
+		log.step(`${label}: ${this.dryRun ? 'would remove' : 'removed'} ${rel}`)
+
+		if (!this.dryRun) {
+			await rm(target, { force: true })
+			this.provenance?.forget(dir, rel)
+		}
+	}
+
 	async add(dir: string, rel: string, content: string, label: string): Promise<void> {
+		assertConfined(this.root, join(dir, rel))
 		if (existsSync(join(dir, rel))) return
 
 		this.changed++

@@ -11,7 +11,10 @@ export const ADDON_DEPS = {
 } as const
 
 export const PNPM_VERSION = '11.25.0'
-export const NODE_RANGE = '>=22.13.0'
+export const NODE_RANGE = '>=26'
+
+/** What `.nvmrc` pins, so CI and editors run the one Node version the workspace is tested on. */
+export const NODE_VERSION = '26'
 
 const requirePackage = createRequire(import.meta.url)
 
@@ -25,15 +28,16 @@ function readCliVersion(): string {
 			continue
 		}
 	}
-	return '0.0.0'
+
+	throw new Error('Could not read the version of @zerosumstudio/spool from its package.json.')
 }
 
 export const CLI_VERSION = readCliVersion()
 
 /**
  * Dependency ranges for every scaffolded app, kept in one place so a
- * toolchain bump is a single edit. The CI smoke job builds a real scaffold on
- * every change, so a bump here gets verified end to end.
+ * toolchain bump is a single edit. The CI matrix job builds a real scaffold of every
+ * framework on every change, so a bump here gets verified end to end.
  */
 export const TOOLCHAIN = {
 	react: '^19.2.8',
@@ -51,6 +55,9 @@ export const TOOLCHAIN = {
 	'@vitejs/plugin-react': '^6.0.0',
 	typescript: '^6.0.3',
 	vite: '^8.0.0',
+	// Type-check .vue and .svelte files, which plain tsc cannot read.
+	'vue-tsc': '^3.3.14',
+	'svelte-check': '^4.7.8',
 } as const
 
 export type ToolchainDep = keyof typeof TOOLCHAIN
@@ -75,17 +82,25 @@ export const FRAMEWORK_DEPS: Record<Framework, FrameworkDeps> = {
 	},
 	svelte: {
 		dependencies: ['svelte'],
-		devDependencies: ['@sveltejs/vite-plugin-svelte'],
+		devDependencies: ['@sveltejs/vite-plugin-svelte', 'svelte-check'],
 		// Svelte remotes expose a self-contained mount function; hosts need nothing.
 		bridgeDependencies: [],
 		bridgeDevDependencies: [],
 	},
 	vue: {
 		dependencies: ['vue'],
-		devDependencies: ['@vitejs/plugin-vue'],
+		devDependencies: ['@vitejs/plugin-vue', 'vue-tsc'],
 		bridgeDependencies: [],
 		bridgeDevDependencies: [],
 	},
+}
+
+/**
+ * The runtime packages federation shares as singletons for a framework. Svelte shares none:
+ * a Svelte remote mounts through its own `mountApp`, and two runtimes never meet.
+ */
+export function sharedRuntime(framework: Framework): string[] {
+	return framework === 'svelte' ? [] : FRAMEWORK_DEPS[framework].dependencies
 }
 
 export const COMMON_DEV_DEPS: ToolchainDep[] = [
@@ -96,7 +111,7 @@ export const COMMON_DEV_DEPS: ToolchainDep[] = [
 ]
 
 export const SHARED_EXTRAS: Record<string, string> = {
-	'@zerosumstudio/clutch': '^3.5.0',
+	'@zerosumstudio/clutch': '^1.0.0',
 }
 
 export const SENTRY_SDK: Record<Framework, string> = {
@@ -106,6 +121,7 @@ export const SENTRY_SDK: Record<Framework, string> = {
 }
 
 export const LINT_DEPS: Record<string, string> = {
+	prettier: '^3.10.1',
 	eslint: '^10.9.1',
 	'@eslint/js': '^10.0.1',
 	'typescript-eslint': '^8.69.0',
@@ -114,7 +130,8 @@ export const LINT_DEPS: Record<string, string> = {
 
 export const LINT_FRAMEWORK_DEPS: Record<Framework, Record<string, string>> = {
 	react: { 'eslint-plugin-react-hooks': '^7.1.1' },
-	svelte: { 'eslint-plugin-svelte': '^3.23.0' },
+	// prettier skips .svelte files without the plugin, so format:check would pass over them.
+	svelte: { 'eslint-plugin-svelte': '^3.23.0', 'prettier-plugin-svelte': '^4.2.0' },
 	vue: { 'eslint-plugin-vue': '^10.10.0' },
 }
 
@@ -135,8 +152,8 @@ export const TEST_FRAMEWORK_DEPS: Record<Framework, Record<string, string>> = {
 	vue: { '@testing-library/vue': '^8.1.0' },
 }
 
-export const SENTRY_VERSION = '^10.64.0'
-export const SENTRY_VITE_PLUGIN_VERSION = '^5.3.0'
+export const SENTRY_VERSION = '^11.19.0'
+export const SENTRY_VITE_PLUGIN_VERSION = '^11.19.0'
 
 export function rootDevDependencies(m: Manifest): Record<string, string> {
 	const deps: Record<string, string> = {
@@ -185,7 +202,7 @@ export function appDependencies(
 		if (sharedPackages.has(dep)) dependencies[dep] = range
 	}
 
-	if (m.addons.includes('federation') && (app.type === 'host' || app.remotes.length > 0)) {
+	if (app.type === 'host' || app.remotes.length > 0) {
 		dependencies['@module-federation/runtime'] = TOOLCHAIN['@module-federation/runtime']
 	}
 

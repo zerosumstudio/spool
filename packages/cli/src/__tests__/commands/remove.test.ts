@@ -2,13 +2,22 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { create } from '../../commands/create.js'
 import { add } from '../../commands/add.js'
 import { remove } from '../../commands/remove.js'
 import { upgrade } from '../../commands/upgrade.js'
 import * as p from '@clack/prompts'
+import { CliError, exitCodeFor } from '../../util/errors.js'
 import { freshDir, removeDir } from '../helpers.js'
 
 /*
@@ -16,8 +25,8 @@ import { freshDir, removeDir } from '../helpers.js'
  ***************************************************************************************************/
 vi.mock('../../util/exec.js', () => ({ run: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@clack/prompts', async importOriginal => {
-	const actual = (await importOriginal()) as typeof p
-	return { ...actual, confirm: vi.fn() }
+	const actual = await importOriginal<typeof p>()
+	return { ...actual, confirm: vi.fn(), isCancel: vi.fn(actual.isCancel) }
 })
 
 /*
@@ -83,7 +92,7 @@ describe('remove', () => {
 	})
 
 	it('deletes the app folder with --files', async () => {
-		await remove('dashboard', { files: true })
+		await remove('dashboard', { files: true, yes: true })
 
 		expect(existsSync(join(dir, 'apps/dashboard'))).toBe(false)
 	})
@@ -98,7 +107,7 @@ describe('remove', () => {
 	})
 
 	it('round-trips with add', async () => {
-		await remove('dashboard', { files: true })
+		await remove('dashboard', { files: true, yes: true })
 		await add('dashboard', { install: false })
 
 		const m = manifest()
@@ -110,12 +119,17 @@ describe('remove', () => {
 		await expect(remove('ghost', {})).rejects.toThrow('No app named "ghost"')
 	})
 
-	it('refuses to delete files outside the workspace', async () => {
-		const m = manifest()
-		m.apps.dashboard.path = '../outside'
-		writeFileSync(join(dir, 'spool.json'), JSON.stringify(m))
+	it('refuses a manifest whose app path leaves the workspace, before deleting anything', async () => {
+		for (const path of ['../outside', String.raw`\servershare`, 'C:foo']) {
+			const m = manifest()
+			m.apps.dashboard.path = path
+			writeFileSync(join(dir, 'spool.json'), JSON.stringify(m))
 
-		await expect(remove('dashboard', { files: true })).rejects.toThrow('invalid path')
+			await expect(remove('dashboard', { files: true, yes: true })).rejects.toMatchObject({
+				code: 'MANIFEST_INVALID',
+				message: expect.stringContaining('apps.dashboard.path'),
+			})
+		}
 	})
 
 	it('unwires a remote from another remote that consumes it, not just from hosts', async () => {
@@ -156,7 +170,6 @@ describe('remove: a remote consuming another remote', () => {
 			pm: 'pnpm',
 			host: 'shell',
 			remotes: 'dashboard, widget',
-			addons: 'federation',
 			install: false,
 		})
 		process.chdir(chainDir)
@@ -235,10 +248,59 @@ describe('remove --files confirmation', () => {
 		expect(existsSync(join(dir, 'apps/dashboard'))).toBe(false)
 	})
 
-	it('does not ask without a tty', async () => {
-		await remove('dashboard', { files: true })
+	it('exits 2 without --yes when there is no tty, and deletes nothing', async () => {
+		const error = await remove('dashboard', { files: true }).catch((caught: unknown) => caught)
+
+		expect(error).toBeInstanceOf(CliError)
+		expect(error).toMatchObject({ code: 'CONFIRMATION_REQUIRED' })
+		expect(exitCodeFor(error)).toBe(2)
+		expect(p.confirm).not.toHaveBeenCalled()
+		expect(existsSync(join(dir, 'apps/dashboard'))).toBe(true)
+		expect(manifest().apps.dashboard).toBeDefined()
+	})
+
+	it('deletes without a tty when --yes is passed', async () => {
+		await remove('dashboard', { files: true, yes: true })
 
 		expect(p.confirm).not.toHaveBeenCalled()
 		expect(existsSync(join(dir, 'apps/dashboard'))).toBe(false)
+	})
+
+	it('treats Ctrl-C at the question as a cancel, not a no', async () => {
+		asTty()
+		vi.mocked(p.confirm).mockResolvedValue(Symbol('cancel') as never)
+		vi.mocked(p.isCancel).mockReturnValueOnce(true)
+
+		await expect(remove('dashboard', { files: true })).rejects.toMatchObject({
+			code: 'CANCELLED',
+		})
+		expect(existsSync(join(dir, 'apps/dashboard'))).toBe(true)
+	})
+})
+
+/*
+ *   LINKS IN THE APP PATH
+ ***************************************************************************************************/
+describe('remove --files through a link', () => {
+	it('refuses to delete through a symlinked or junctioned parent, and leaves everything as it was', async () => {
+		// Moves apps/ into a second temp folder and links it back, all inside this test's temp dirs.
+		const outside = freshDir('spool-remove-outside-')
+
+		try {
+			renameSync(join(dir, 'apps'), join(outside, 'apps'))
+			symlinkSync(join(outside, 'apps'), join(dir, 'apps'), 'junction')
+			const before = readFileSync(join(dir, 'spool.json'), 'utf8')
+
+			await expect(remove('profile', { files: true, yes: true })).rejects.toMatchObject({
+				code: 'UNSAFE_PATH',
+			})
+
+			expect(existsSync(join(outside, 'apps', 'profile'))).toBe(true)
+			expect(readFileSync(join(dir, 'spool.json'), 'utf8')).toBe(before)
+		} finally {
+			// Unlink before removing, so cleanup can never follow the link.
+			rmSync(join(dir, 'apps'), { force: true })
+			removeDir(outside)
+		}
 	})
 })

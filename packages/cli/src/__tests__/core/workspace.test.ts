@@ -4,12 +4,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-	findWorkspaceRoot,
-	loadWorkspace,
-	requireWorkspace,
-	saveManifest,
-} from '../../core/workspace.js'
+import { findWorkspaceRoot } from '../../core/manifest-file.js'
+import { loadWorkspace, requireWorkspace, saveManifest } from '../../core/workspace.js'
 import { freshDir, removeDir, makeManifest, makeWorkspace, host, remote } from '../helpers.js'
 
 /*
@@ -86,7 +82,7 @@ describe('saveManifest', () => {
 	})
 
 	it('keeps the hand-written key order and does not materialize defaults', async () => {
-		const raw = `{\n  "apps": {\n    "shell": { "type": "host", "path": "apps/shell", "port": 5173 }\n  },\n  "name": "acme"\n}\n`
+		const raw = `{\n  "apps": {\n    "shell": { "type": "host", "path": "apps/shell", "port": 5173 }\n  },\n  "name": "acme",\n  "version": 2\n}\n`
 		writeFileSync(join(root, 'spool.json'), raw)
 
 		const ws = await requireWorkspace(root)
@@ -96,8 +92,8 @@ describe('saveManifest', () => {
 		const written = readFileSync(join(root, 'spool.json'), 'utf8')
 		const parsed = JSON.parse(written) as Record<string, unknown>
 
-		expect(Object.keys(parsed)).toEqual(['apps', 'name'])
-		expect(parsed).not.toHaveProperty('version')
+		expect(Object.keys(parsed)).toEqual(['apps', 'name', 'version'])
+		expect(parsed).not.toHaveProperty('csp')
 		expect(parsed).not.toHaveProperty('shared')
 		expect(parsed).not.toHaveProperty('addons')
 		expect((parsed.apps as Record<string, { port: number }>)['shell']?.port).toBe(5174)
@@ -106,6 +102,7 @@ describe('saveManifest', () => {
 	it('keeps an app-level default the file already spelled out explicitly', async () => {
 		const raw = JSON.stringify({
 			name: 'acme',
+			version: 2,
 			apps: {
 				shell: { type: 'host', path: 'apps/shell', port: 5173, remotes: [] },
 			},
@@ -122,7 +119,7 @@ describe('saveManifest', () => {
 	})
 
 	it('writes a new field a mutation actually set, even though it is not in the original', async () => {
-		const raw = JSON.stringify({ name: 'acme', apps: {} })
+		const raw = JSON.stringify({ name: 'acme', version: 2, apps: {} })
 		writeFileSync(join(root, 'spool.json'), raw)
 
 		const ws = await requireWorkspace(root)

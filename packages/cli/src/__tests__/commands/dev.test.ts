@@ -37,8 +37,24 @@ describe('dev', () => {
 		)
 	})
 
-	it('parses --rest <env-name>', async () => {
-		await dev({ rest: 'staging' })
+	it('rejects --rest with a bare environment name, which needs the env: prefix', async () => {
+		await expect(dev({ rest: 'staging' })).rejects.toMatchObject({
+			code: 'INVALID_VALUE',
+			message: expect.stringContaining('env:<name>'),
+		})
+		expect(devAll).not.toHaveBeenCalled()
+	})
+
+	it('lets an environment be called "built" through env:', async () => {
+		await dev({ rest: 'env:built' })
+		expect(devAll).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ rest: { kind: 'env', env: 'built' } }),
+		)
+	})
+
+	it('parses --rest env:<name>', async () => {
+		await dev({ rest: 'env:staging' })
 		expect(devAll).toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({ rest: { kind: 'env', env: 'staging' } }),

@@ -4,7 +4,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { writePidfile, readPidfile, removePidfile, pidfilePath } from '../../core/pidfile.js'
+import {
+	currentProcess,
+	writePidfile,
+	readPidfile,
+	removePidfile,
+	pidfilePath,
+} from '../../core/pidfile.js'
 import { makeWorkspace, remote, freshDir, removeDir } from '../helpers.js'
 
 /*
@@ -17,6 +23,33 @@ afterEach(() => {
 })
 
 describe('pidfile', () => {
+	it('records how to recognise this process and each child, so --kill can verify a pid', () => {
+		root = freshDir('spool-pidfile-identity-')
+		const ws = makeWorkspace(root, { dashboard: remote() })
+		const child = {
+			name: 'dashboard',
+			port: 5174,
+			pid: 4242,
+			startedAt: 1_000,
+			match: '/vite.js',
+		}
+
+		writePidfile(ws, 'dev', [child])
+
+		const pidfile = readPidfile(ws, 'dev')
+		expect(pidfile?.children).toEqual([child])
+		expect(pidfile?.parent?.match).toBe(process.argv[1])
+		expect(pidfile?.parent?.startedAt).toBeLessThanOrEqual(Date.now())
+	})
+
+	it('describes the current process by its start time and script', () => {
+		const info = currentProcess()
+
+		expect(info.startedAt).toBeLessThanOrEqual(Date.now())
+		expect(info.startedAt).toBeGreaterThan(Date.now() - 24 * 3_600_000)
+		expect(info.match).toBe(process.argv[1] ?? process.execPath)
+	})
+
 	it('writes children and reads them back with the parent pid and a timestamp', () => {
 		root = freshDir('spool-pidfile-')
 		const ws = makeWorkspace(root, { dashboard: remote() })

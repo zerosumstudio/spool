@@ -28,11 +28,7 @@ const config = (addons: AddonName[] = ['turbo']) =>
  ***************************************************************************************************/
 describe('turbo addon', () => {
 	it('puts the manifest and helpers in the global hash', () => {
-		expect(config().globalDependencies).toEqual([
-			'spool.json',
-			'spool.vite.ts',
-			'spool.workspace.ts',
-		])
+		expect(config().globalDependencies).toEqual(['spool.json', 'spool.workspace.ts'])
 	})
 
 	it('declares the variables that change what a build emits', () => {

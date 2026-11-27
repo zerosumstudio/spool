@@ -1,0 +1,13 @@
+{
+	"extends": "../../../../../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"jsx": "react-jsx",
+		"noEmit": true,
+		"types": ["node"],
+		"rootDirs": [".", "./stubs"]
+	},
+	"include": ["*.ts", "*.tsx", "stubs", "__tests__"]
+}

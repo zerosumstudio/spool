@@ -3,9 +3,9 @@
  ***************************************************************************************************/
 import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { helperLacks, type Workspace } from './workspace.js'
+import type { Workspace } from './workspace.js'
 import { HELPER_FILE, type Framework, type Manifest } from './config.js'
-import { FRAMEWORK_DEPS, SENTRY_SDK } from './versions.js'
+import { FRAMEWORK_DEPS, SENTRY_SDK, sharedRuntime } from './versions.js'
 import { readPackageJson } from './packages.js'
 import { labelledMembers } from './packages-glob.js'
 import { resolveRanges, type RangeInfo } from './ranges.js'
@@ -15,6 +15,9 @@ import { hashContent, Provenance } from './provenance.js'
 import { isUpgrade } from '../util/semver.js'
 import { packageName, remoteEnvVar } from '../util/names.js'
 import { portOwner } from '../util/net.js'
+
+/** How long `doctor --remote` waits for a deployed manifest. */
+const DEFAULT_REMOTE_FETCH_TIMEOUT_MS = 8_000
 
 /*
  *   TYPES
@@ -58,7 +61,7 @@ export function diagnose(ws: Workspace): Diagnostic[] {
 	const { apps } = ws.manifest
 	const targets = resolveRanges(ws)
 	return [
-		...checkHelper(ws.root),
+		...checkLeftovers(ws),
 		...checkFsAllow(ws),
 		...checkPorts(apps),
 		...checkPaths(ws.root, apps),
@@ -87,7 +90,7 @@ export async function diagnosePorts(ws: Workspace): Promise<Diagnostic[]> {
 			warn(
 				name,
 				'port-in-use',
-				`Port ${port} is already in use by pid ${owner.pid}${owner.command ? ` (${owner.command})` : ''}. Run \`spool dev --kill\` to free it, or change the port.`,
+				`Port ${port} is already in use by pid ${owner.pid}${owner.command ? ` (${owner.command})` : ''}. Run \`spool dev --kill\` if it is a leftover spool run; otherwise stop it or change the port.`,
 			),
 		)
 	}
@@ -98,37 +101,48 @@ export async function diagnosePorts(ws: Workspace): Promise<Diagnostic[]> {
 /*
  *   CHECKS
  ***************************************************************************************************/
-/** Every app's vite config imports the workspace-root helper at startup. */
-function checkHelper(root: string): Diagnostic[] {
-	if (existsSync(join(root, HELPER_FILE))) return []
-	return [
-		error(
-			'',
-			'missing-helper',
-			`${HELPER_FILE} is missing from the workspace root. App vite configs import it; restore it from version control, or run \`spool add\` which recreates it.`,
-		),
-	]
+/**
+ * Files an older spool generated and the `@zerosumstudio/spool/vite` import replaced.
+ * A `public/_headers` is copied into `dist`, where it clashes with the one the plugin writes
+ * from spool.json, and its policy is whatever was true when it was generated.
+ */
+function checkLeftovers(ws: Workspace): Diagnostic[] {
+	const issues: Diagnostic[] = []
+
+	if (existsSync(join(ws.root, HELPER_FILE))) {
+		issues.push(
+			warn(
+				'',
+				'leftover-helper',
+				`${HELPER_FILE} is no longer used: app vite configs import @zerosumstudio/spool/vite. Run \`spool upgrade\`, which removes it, or delete it.`,
+			),
+		)
+	}
+
+	for (const [name, app] of Object.entries(ws.manifest.apps)) {
+		if (existsSync(join(ws.root, app.path, 'public/_headers'))) {
+			issues.push(
+				warn(
+					name,
+					'leftover-headers',
+					'public/_headers is copied into dist and clashes with the _headers spool writes from spool.json at build. Run `spool upgrade`, which removes it, or delete it.',
+				),
+			)
+		}
+	}
+
+	return issues
 }
 
 /**
  * Entries resolve against the workspace root. One holding an env reference
- * depends on the shell spool.vite.ts runs in, so it is left to the helper.
+ * depends on the shell vite runs in, so it is left to the vite plugin.
  */
 function checkFsAllow(ws: Workspace): Diagnostic[] {
 	const entries = ws.manifest.server?.fs?.allow
 	if (!entries) return []
 
 	const issues: Diagnostic[] = []
-	if (helperLacks(ws, 'fsAllow')) {
-		issues.push(
-			warn(
-				'',
-				'helper-stale-fs-allow',
-				`This workspace's ${HELPER_FILE} predates server.fs.allow, so the dev server ignores it. Run \`spool upgrade\`.`,
-			),
-		)
-	}
-
 	for (const entry of entries) {
 		if (entry.includes('${')) continue
 
@@ -260,24 +274,33 @@ function collectSharedRanges(
 	for (const [name, path] of labelledMembers(ws)) {
 		const deps = declaredRanges(ws, name, path, issues)
 
-		if (!deps) continue
-
-		const app = ws.manifest.apps[name]
-		const foreign = foreignRuntimes(app?.framework)
-
-		for (const dep of sharedPackages) {
-			const range = deps[dep]
-
-			if (range === undefined) {
-				if (app && !foreign.has(dep)) issues.push(missingShared(name, dep, targets))
-				continue
-			}
-
-			recordRange(ranges, dep, range, name)
-		}
+		if (deps) collectMemberRanges(ws, name, deps, sharedPackages, { ranges, issues, targets })
 	}
 
 	return ranges
+}
+
+/** Records one member's range for each shared dep, and flags the ones it should have but lacks. */
+function collectMemberRanges(
+	ws: Workspace,
+	name: string,
+	deps: Record<string, string>,
+	sharedPackages: string[],
+	{
+		ranges,
+		issues,
+		targets,
+	}: { ranges: SharedRanges; issues: Diagnostic[]; targets: Map<string, RangeInfo> },
+): void {
+	const app = ws.manifest.apps[name]
+	const foreign = foreignRuntimes(app?.framework)
+
+	for (const dep of sharedPackages) {
+		const range = deps[dep]
+
+		if (range !== undefined) recordRange(ranges, dep, range, name)
+		else if (app && !foreign.has(dep)) issues.push(missingShared(name, dep, targets))
+	}
 }
 
 function declaredRanges(
@@ -342,7 +365,7 @@ function checkFrameworkShared(ws: Workspace): Diagnostic[] {
 	const issues: Diagnostic[] = []
 
 	for (const framework of frameworks) {
-		for (const dep of FRAMEWORK_DEPS[framework].dependencies) {
+		for (const dep of sharedRuntime(framework)) {
 			if (sharedPackages.has(dep)) continue
 
 			issues.push(
@@ -431,7 +454,7 @@ async function checkDeployedRemote(name: string, url: string): Promise<Diagnosti
 	try {
 		response = await fetch(url, {
 			headers: { Origin: 'https://spool-doctor.invalid' },
-			signal: AbortSignal.timeout(8000),
+			signal: AbortSignal.timeout(DEFAULT_REMOTE_FETCH_TIMEOUT_MS),
 		})
 	} catch (cause) {
 		const reason = cause instanceof Error ? cause.message : String(cause)
@@ -538,7 +561,6 @@ function checkGenerated(ws: Workspace): Diagnostic[] {
 	return [
 		...checkProvenanceDrift(ws, provenance),
 		...checkUntrackedGenerated(ws, provenance),
-		...checkHostHeaders(ws.root, ws.manifest.apps),
 		...checkUnusedShared(ws),
 		...checkSentryEnv(ws),
 		...checkStaleTypes(ws.root, ws.manifest.apps),
@@ -608,36 +630,6 @@ function ownerOf(ws: Workspace, rel: string): string {
 		([, app]) => rel === app.path || rel.startsWith(`${app.path}/`),
 	)
 	return owner?.[0] ?? ''
-}
-
-function checkHostHeaders(root: string, apps: Apps): Diagnostic[] {
-	const issues: Diagnostic[] = []
-
-	for (const [name, app] of Object.entries(apps)) {
-		if (app.type !== 'host') continue
-
-		const target = join(root, app.path, 'public/_headers')
-		if (!existsSync(target)) continue
-
-		let content: string
-		try {
-			content = readFileSync(target, 'utf8')
-		} catch {
-			continue
-		}
-
-		if (/access-control-allow-origin/i.test(content)) {
-			issues.push(
-				warn(
-					name,
-					'host-cors-headers',
-					'public/_headers sends Access-Control-Allow-Origin, which is for a remote serving assets cross-origin. A host does not need it.',
-				),
-			)
-		}
-	}
-
-	return issues
 }
 
 const SOURCE_EXTENSIONS = /\.(ts|tsx|js|jsx|svelte|vue)$/

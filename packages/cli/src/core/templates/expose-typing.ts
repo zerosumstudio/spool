@@ -15,9 +15,11 @@ export function typedExposeDeclaration(
 	ctx: RemoteTypingContext,
 ): string | undefined {
 	const source = ref.exposeSources[expose]
+
 	if (!source) return undefined
 
 	const declFile = exposeDeclarationPath(ctx.root, ref.name, ref.path, source)
+
 	if (!existsSync(declFile)) return undefined
 
 	const hostSrcDir = join(ctx.root, ctx.hostPath, 'src')
@@ -26,9 +28,9 @@ export function typedExposeDeclaration(
 	const importPath = relPath.startsWith('.') ? relPath : `./${relPath}`
 
 	return `// Typed by \`spool types\` from the remote's real export.
-declare module "${ref.name}/${expose}" {
-  const Exposed: typeof import("${importPath}")["default"];
-  export default Exposed;
+declare module '${ref.name}/${expose}' {
+	const Exposed: typeof import('${importPath}')['default']
+	export default Exposed
 }
 `
 }

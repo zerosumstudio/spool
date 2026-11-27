@@ -1,14 +1,45 @@
 /*
  *   IMPORTS
  ***************************************************************************************************/
-import {
-	HELPER_FILE,
-	MANIFEST_FILE,
-	WORKSPACE_FILE,
-	type AppConfig,
-	type Manifest,
-} from '../config.js'
+import { MANIFEST_FILE, WORKSPACE_FILE, type AppConfig, type Manifest } from '../config.js'
 import type { FileMap } from '../filemap.js'
+import { NODE_VERSION } from '../versions.js'
+
+/*
+ *   ACTION PINS
+ ***************************************************************************************************/
+/**
+ * Every action a generated workflow uses, pinned to a commit. `sha` is the commit the release tag
+ * `tag` points at (for an annotated tag, the commit it peels to), read with
+ * `git ls-remote https://github.com/<action> refs/tags/<tag>`. Renovate keeps these entries fresh
+ * through the regex manager in renovate.json, which reads the three fields of each one.
+ */
+export const ACTION_PINS = {
+	checkout: {
+		action: 'actions/checkout',
+		sha: '3d3c42e5aac5ba805825da76410c181273ba90b1',
+		tag: 'v7.0.1',
+	},
+	setupNode: {
+		action: 'actions/setup-node',
+		sha: '949feb2413d6458794dcd2491c4babbbce0c15c1',
+		tag: 'v7.1.0',
+	},
+	pnpmSetup: {
+		action: 'pnpm/action-setup',
+		sha: '73e46992e05b19abd31f2f3c20e0e7370d762115',
+		tag: 'v6.1.1',
+	},
+} as const
+
+export type ActionKey = keyof typeof ACTION_PINS
+
+/** `owner/repo@sha # tag`, the form a workflow's `uses` takes. */
+export function actionRef(key: ActionKey): string {
+	const { action, sha, tag } = ACTION_PINS[key]
+
+	return `${action}@${sha} # ${tag}`
+}
 
 /*
  *   GITHUB WORKFLOWS
@@ -21,56 +52,29 @@ const CHECK_STEPS: { script: string; label: string }[] = [
 	{ script: 'build', label: 'Build' },
 ]
 
-/** Actions this template uses, pinned to a commit sha at generation time by `spool ci --pin`. */
-export const PINNED_ACTIONS = {
-	checkout: { owner: 'actions', repo: 'checkout', tag: 'v7' },
-	setupNode: { owner: 'actions', repo: 'setup-node', tag: 'v6' },
-	pnpmSetup: { owner: 'pnpm', repo: 'action-setup', tag: 'v6' },
-} as const
-
-export type ActionKey = keyof typeof PINNED_ACTIONS
-export type ActionPins = Record<ActionKey, string>
-
-/** A safe floor when the workspace names no node version anywhere. */
-export const NODE_VERSION_FALLBACK = '22'
-
 /** The literal fallback path filter when no workspace globs can be found. */
 const PACKAGE_GLOB_FALLBACK = ['packages']
+
+/** The GitHub environment a deploy runs in. Rename it here and in the repository settings. */
+export const DEPLOY_ENVIRONMENT = 'production'
 
 export interface CiContext {
 	/** Passed to actions/setup-node; defaults to a safe fallback. */
 	nodeVersion?: string
 	/** Shared-package directories (not other apps) a deploy should also watch. */
 	packageGlobs?: string[]
-	/** Commit-pinned refs; anything missing falls back to an unpinned tag. */
-	pins?: Partial<ActionPins>
-}
-
-function unpinnedRef(action: { owner: string; repo: string; tag: string }): string {
-	return `${action.owner}/${action.repo}@${action.tag}`
-}
-
-function resolvePins(overrides: Partial<ActionPins> = {}): ActionPins {
-	const defaults = Object.fromEntries(
-		(Object.entries(PINNED_ACTIONS) as [ActionKey, (typeof PINNED_ACTIONS)[ActionKey]][]).map(
-			([key, action]) => [key, unpinnedRef(action)],
-		),
-	) as ActionPins
-
-	return { ...defaults, ...overrides }
 }
 
 export function ciWorkflows(
 	m: Manifest,
 	scripts: Record<string, string> = {},
-	ctx: CiContext = {},
+	context: CiContext = {},
 ): FileMap {
-	const nodeVersion = ctx.nodeVersion ?? NODE_VERSION_FALLBACK
-	const packageGlobs = ctx.packageGlobs ?? PACKAGE_GLOB_FALLBACK
-	const pins = resolvePins(ctx.pins)
+	const nodeVersion = context.nodeVersion ?? NODE_VERSION
+	const packageGlobs = context.packageGlobs ?? PACKAGE_GLOB_FALLBACK
 
 	const files: FileMap = {
-		'.github/workflows/ci.yml': checkWorkflow(m, scripts, nodeVersion, pins),
+		'.github/workflows/ci.yml': checkWorkflow(m, scripts, nodeVersion),
 	}
 
 	for (const [name, app] of Object.entries(m.apps)) {
@@ -83,7 +87,6 @@ export function ciWorkflows(
 			scripts,
 			nodeVersion,
 			packageGlobs,
-			pins,
 		)
 	}
 
@@ -91,21 +94,31 @@ export function ciWorkflows(
 }
 
 /*
- *   SHARED STEPS
+ *   YAML
  ***************************************************************************************************/
-function pnpmSetupStep(pm: Manifest['packageManager'], pins: ActionPins): string {
-	return pm === 'pnpm' ? `\n            - uses: ${pins.pnpmSetup}\n` : ''
+/** A YAML scalar the way prettier writes it with single quotes. */
+function yamlString(value: string): string {
+	if (value.includes("'") && !value.includes('"') && !value.includes('\\')) return `"${value}"`
+
+	return `'${value.replaceAll("'", "''")}'`
 }
 
-function setupSteps(pm: Manifest['packageManager'], nodeVersion: string, pins: ActionPins): string {
-	return `            - uses: ${pins.checkout}
+/*
+ *   SHARED STEPS
+ ***************************************************************************************************/
+function pnpmSetupStep(pm: Manifest['packageManager']): string {
+	return pm === 'pnpm' ? `\n            - uses: ${actionRef('pnpmSetup')}\n` : ''
+}
+
+function setupSteps(pm: Manifest['packageManager'], nodeVersion: string): string {
+	return `            - uses: ${actionRef('checkout')}
               with:
                   persist-credentials: false
-${pnpmSetupStep(pm, pins)}
-            - uses: ${pins.setupNode}
+${pnpmSetupStep(pm)}
+            - uses: ${actionRef('setupNode')}
               with:
-                  node-version: ${JSON.stringify(nodeVersion)}
-                  cache: ${JSON.stringify(pm)}
+                  node-version: ${yamlString(nodeVersion)}
+                  cache: ${yamlString(pm)}
 
             - name: Install
               run: ${INSTALL_COMMANDS[pm]}
@@ -125,12 +138,7 @@ function checkSteps(pm: Manifest['packageManager'], scripts: Record<string, stri
 /*
  *   CHECK WORKFLOW
  ***************************************************************************************************/
-function checkWorkflow(
-	m: Manifest,
-	scripts: Record<string, string>,
-	nodeVersion: string,
-	pins: ActionPins,
-): string {
+function checkWorkflow(m: Manifest, scripts: Record<string, string>, nodeVersion: string): string {
 	const pm = m.packageManager
 
 	return `# Generated by spool ci. Checks the whole workspace; the deploy-*.yml
@@ -155,7 +163,7 @@ jobs:
     check:
         runs-on: ubuntu-latest
         steps:
-${setupSteps(pm, nodeVersion, pins)}${checkSteps(pm, scripts)}
+${setupSteps(pm, nodeVersion)}${checkSteps(pm, scripts)}
 `
 }
 
@@ -174,7 +182,6 @@ function pathFilters(m: Manifest, app: AppConfig, packageGlobs: string[]): strin
 		`${app.path}/**`,
 		...sharedPackageGlobs(m, packageGlobs),
 		MANIFEST_FILE,
-		HELPER_FILE,
 		WORKSPACE_FILE,
 		'tsconfig.base.json',
 		'package.json',
@@ -182,7 +189,28 @@ function pathFilters(m: Manifest, app: AppConfig, packageGlobs: string[]): strin
 		...(pm === 'pnpm' ? ['pnpm-workspace.yaml'] : []),
 	]
 
-	return [...new Set(entries)].map(entry => `            - ${JSON.stringify(entry)}`).join('\n')
+	return [...new Set(entries)].map(entry => `            - ${yamlString(entry)}`).join('\n')
+}
+
+/**
+ * The deploy command with only the secrets the app lists in `deployEnv`. No secret is passed
+ * by default: a deploy that needs one says so in spool.json.
+ */
+function deployStep(app: AppConfig): string {
+	const names = app.deployEnv ?? []
+	const env = names.length
+		? `\n              env:\n${names.map(name => `                  ${name}: \${{ secrets.${name} }}`).join('\n')}`
+		: ''
+	const note = names.length
+		? ''
+		: `            # No secrets are passed. List the ones this command reads in "deployEnv" in
+            # spool.json, then rerun \`spool ci --force\`.
+`
+
+	return `${note}            - name: Deploy
+              working-directory: ${yamlString(app.path)}
+              run: ${yamlString(app.deploy ?? '')}${env}
+`
 }
 
 function deployWorkflow(
@@ -192,13 +220,12 @@ function deployWorkflow(
 	scripts: Record<string, string>,
 	nodeVersion: string,
 	packageGlobs: string[],
-	pins: ActionPins,
 ): string {
 	const pm = m.packageManager
 
-	return `# Generated by spool ci. The deploy command is copied from spool.json;
-# rerun \`spool ci --force\` after changing it there. Spool cannot know your
-# default branch, so change the branches list below if it is not main.
+	return `# Generated by spool ci. The deploy command and its secrets are copied from spool.json;
+# rerun \`spool ci --force\` after changing them there. Spool cannot know your
+# default branch, so change the branches list below, and the deploy job's "if", if it is not main.
 name: Deploy ${appName}
 
 on:
@@ -213,35 +240,34 @@ permissions:
 
 concurrency:
     group: \${{ github.workflow }}-\${{ github.ref }}
-    cancel-in-progress: true
+    # Never cancel a deploy that is running: a half-finished upload is worse than a queued one.
+    cancel-in-progress: false
 
 jobs:
     check:
         runs-on: ubuntu-latest
         steps:
-${setupSteps(pm, nodeVersion, pins)}${checkSteps(pm, scripts)}
+${setupSteps(pm, nodeVersion)}${checkSteps(pm, scripts)}
 
     deploy:
         needs: check
         runs-on: ubuntu-latest
+        # Keep the deploy secrets in this GitHub environment, so they only reach this job.
+        # An environment accepts every branch until you restrict it: in Settings > Environments,
+        # set Deployment branches to main and add required reviewers, or any collaborator can run
+        # this workflow from their own branch and read those secrets without review.
+        if: github.ref == 'refs/heads/main'
+        environment: ${DEPLOY_ENVIRONMENT}
         permissions:
             contents: read
             # Add what your deploy command needs, e.g. id-token: write for OIDC.
         steps:
-${setupSteps(pm, nodeVersion, pins)}
+${setupSteps(pm, nodeVersion)}
             - name: Build
-              working-directory: ${JSON.stringify(app.path)}
+              working-directory: ${yamlString(app.path)}
               run: ${pm} run build
 
-            # Add the repository secrets your deploy command reads. These two
-            # cover wrangler; swap in what your host needs.
-            - name: Deploy
-              working-directory: ${JSON.stringify(app.path)}
-              run: ${JSON.stringify(app.deploy!)}
-              env:
-                  CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-                  CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-`
+${deployStep(app)}`
 }
 
 const LOCKFILES = {

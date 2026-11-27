@@ -2,8 +2,7 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { log, fail } from '../../util/logger.js'
-import { CliError } from '../../util/errors.js'
+import { log } from '../../util/logger.js'
 
 /*
  *   TEST SETUP
@@ -30,15 +29,5 @@ describe('log', () => {
 		const err = vi.spyOn(console, 'error').mockImplementation(() => {})
 		log.error('boom')
 		expect(err).toHaveBeenCalledOnce()
-	})
-})
-
-/*
- *   FAIL
- ***************************************************************************************************/
-describe('fail', () => {
-	it('throws a CliError carrying the message instead of exiting', () => {
-		expect(() => fail('nope')).toThrow(CliError)
-		expect(() => fail('nope')).toThrow('nope')
 	})
 })

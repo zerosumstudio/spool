@@ -1,8 +1,6 @@
-// NOTE: Ignore the weird spacing in this file, it's to make the generated code look nice in the templates.
 /*
- *   SVELTE TEMPLATES
+ *   IMPORTS
  ***************************************************************************************************/
-import { camelCase } from '../../util/names.js'
 import {
 	mountContractTyping,
 	reactBridgeFiles,
@@ -11,25 +9,25 @@ import {
 	STATE_STORE_IMPORT,
 } from './bridges.js'
 import { compositionHostApp } from './composition.js'
-import type { FrameworkTemplate, MountHint, RemoteRef, TemplateExtras } from './types.js'
+import { viteEnvFile } from './vite-env.js'
+import type { FrameworkTemplate, RemoteRef, TemplateExtras } from './types.js'
 
 export const svelteTemplate: FrameworkTemplate = {
 	remoteContract: 'mount',
 	exposeEntry: './src/mount.ts',
 	htmlEntry: '/src/main.ts',
-	// The module declaration lets plain tsc check .ts files that import
-	// .svelte components; use svelte-check for template-level checking.
-	viteEnv: `/// <reference types="vite/client" />
-
-declare module "*.svelte" {
-  import type { Component } from "svelte";
-  const component: Component;
-  export default component;
+	// svelte-check reads .svelte files itself; the declaration is for typescript-eslint and
+	// plain tsc, which resolve a .svelte import to it.
+	viteEnv: viteEnvFile(`
+declare module '*.svelte' {
+	import type { Component } from 'svelte'
+	const component: Component
+	export default component
 }
-`,
+`),
 	compilerOptions: {},
 	vitePlugin: {
-		importLine: 'import { svelte } from "@sveltejs/vite-plugin-svelte";',
+		importLine: "import { svelte } from '@sveltejs/vite-plugin-svelte'",
 		call: 'svelte()',
 	},
 	remoteTyping: mountContractTyping,
@@ -40,67 +38,97 @@ declare module "*.svelte" {
 				? svelteHostAppFile(appName, refs, extras)
 				: svelteRemoteApp(appName, extras),
 		}
+
 		if (!isHost) files['src/mount.ts'] = svelteMount()
+
 		return { ...files, ...(isHost ? reactBridgeFiles(refs) : {}) }
 	},
 	bridgeFiles: reactBridgeFiles,
-	mountHint,
 }
 
 /*
  *   FILE BUILDERS
  ***************************************************************************************************/
 function svelteMain(extras: TemplateExtras): string {
-	const sentryImport = extras.sentry ? `import { initSentry } from "./sentry";\n` : ''
-	const sentryCall = extras.sentry ? `initSentry();\n\n` : ''
-	return `${sentryImport}import { mount } from "svelte";
-import App from "./app/app.svelte";
+	const sentryImport = extras.sentry ? `import { initSentry } from './sentry'\n` : ''
+	const sentryCall = extras.sentry ? `initSentry()\n\n` : ''
 
-${sentryCall}mount(App, { target: document.getElementById("root")! });
+	return `${sentryImport}import { mount } from 'svelte'
+import App from './app/app.svelte'
+
+${sentryCall}const root = document.getElementById('root')
+
+if (!root) throw new Error('index.html has no #root element')
+
+mount(App, { target: root })
 `
 }
 
 function svelteMount(): string {
-	return `import { mount, unmount } from "svelte";
-import App from "./app/app.svelte";
+	return `import { mount, unmount } from 'svelte'
+import App from './app/app.svelte'
 
 // What non-react remotes expose. A host mounts this into a node it owns and
 // calls the returned cleanup on teardown.
 export default function mountApp(target: HTMLElement): () => void {
-  const app = mount(App, { target });
-  return () => {
-    void unmount(app);
-  };
+	const app = mount(App, { target })
+
+	return () => {
+		void unmount(app)
+	}
 }
+`
+}
+
+/** The shared count as a rune: whatever reads \`count\` re-runs when the store changes. */
+function counterScript(): string {
+	return `	const track = createSubscriber(update => counterStore.subscribe(update))
+	const count = $derived.by(() => {
+		track()
+
+		return counterStore.getState().count
+	})
 `
 }
 
 function svelteRemoteApp(appName: string, extras: TemplateExtras): string {
 	if (!extras.stateExample) {
-		return `<section style="font-family: system-ui; padding: 16px; border: 1px solid #ccc;">
-  <strong>${appName}</strong>: a Svelte remote exposed via Module Federation.
+		return `<section class="app">
+	<strong>${appName}</strong>: a Svelte remote exposed via Module Federation.
 </section>
+
+<style>
+	.app {
+		font-family: system-ui;
+		padding: 16px;
+		border: 1px solid #ccc;
+	}
+</style>
 `
 	}
 
 	return `<script lang="ts">
-  import { onMount } from "svelte";
-  import { counterMachine } from "${STATE_STORE_IMPORT}";
+	import { createSubscriber } from 'svelte/reactivity'
+	import { counterStore } from '${STATE_STORE_IMPORT}'
 
-  let count = counterMachine.getState().count;
-  onMount(() => counterMachine.subscribe(state => (count = state.count)));
-
-  const increment = () =>
-    counterMachine.mutate(draft => {
-      draft.count += 1;
-    });
+${counterScript()}	const handleIncrement = () => {
+		counterStore.set(s => ({ count: s.count + 1 }))
+	}
 </script>
 
-<section style="font-family: system-ui; padding: 16px; border: 1px solid #ccc;">
-  <p><strong>${appName}</strong>: a Svelte remote exposed via Module Federation.</p>
-  <p>${STATE_COUNT_TEXT} {count}</p>
-  <button on:click={increment}>Increment</button>
+<section class="app">
+	<p><strong>${appName}</strong>: a Svelte remote exposed via Module Federation.</p>
+	<p>${STATE_COUNT_TEXT} {count}</p>
+	<button onclick={handleIncrement}>Increment</button>
 </section>
+
+<style>
+	.app {
+		font-family: system-ui;
+		padding: 16px;
+		border: 1px solid #ccc;
+	}
+</style>
 `
 }
 
@@ -111,94 +139,40 @@ function svelteHostAppFile(appName: string, refs: RemoteRef[], extras: TemplateE
 }
 
 function svelteHostApp(appName: string, refs: RemoteRef[], extras: TemplateExtras): string {
-	const hasBridge = refs.some(r => r.contract === 'component')
-	const bridgeImport = hasBridge ? `\n  import { mountReact } from "./react-bridge";` : ''
-
-	const stateImport = extras.stateExample
-		? `\n  import { counterMachine } from "${STATE_STORE_IMPORT}";`
+	const stateImports = extras.stateExample
+		? `\timport { createSubscriber } from 'svelte/reactivity'\n\timport { counterStore } from '${STATE_STORE_IMPORT}'\n`
 		: ''
-	const stateLines = extras.stateExample
-		? `\n  let count = counterMachine.getState().count;\n  onMount(() => counterMachine.subscribe(state => (count = state.count)));\n`
-		: ''
+	const remoteImport = refs.length ? `\timport { Remote } from '@/federation'\n` : ''
+	const stateLines = extras.stateExample ? `\n${counterScript()}` : ''
 	const stateMarkup = extras.stateExample
-		? `\n  <p data-testid="${STATE_COUNT_TESTID}">${STATE_COUNT_TEXT} {count}</p>`
+		? `\n	<p data-testid="${STATE_COUNT_TESTID}">${STATE_COUNT_TEXT} {count}</p>`
 		: ''
 
-	const elements = refs.map(r => `  let ${camelCase(r.name)}El: HTMLElement;`).join('\n')
-	const mounts = refs
-		.map(r => {
-			const el = `${camelCase(r.name)}El`
-			const mount =
-				r.contract === 'component' ? `mountReact(m.default, ${el})` : `m.default(${el})`
-			return `      void import("${r.name}/App").then(m => {
-        if (!cancelled) cleanups.push(${mount});
-      });`
-		})
-		.join('\n')
 	const sections = refs
 		.map(
-			r => `  <section>
-    <h2>${r.name}</h2>
-    <div bind:this={${camelCase(r.name)}El}></div>
-  </section>`,
+			r => `	<section>
+		<h2>${r.name}</h2>
+		<Remote name="${r.name}">
+			{#snippet fallback()}<p>Loading ${r.name}...</p>{/snippet}
+		</Remote>
+	</section>`,
 		)
 		.join('\n')
+	const noRemotes = `	<p>No remotes mounted yet.</p>`
 
-	const onMount = refs.length
-		? `
-  onMount(() => {
-    let cancelled = false;
-    const cleanups: (() => void)[] = [];
-${mounts}
-    return () => {
-      cancelled = true;
-      cleanups.forEach(cleanup => cleanup());
-    };
-  });
-`
-		: `
-  // No remotes wired yet. Add one with \`spool add <name> --host ${appName}\`.
-`
+	const imports = `${stateImports}${remoteImport}`
+	const script = imports ? `<script lang="ts">\n${imports}${stateLines}</script>\n\n` : ''
 
-	const imports =
-		refs.length || extras.stateExample
-			? `  import { onMount } from "svelte";${bridgeImport}${stateImport}\n${stateLines}\n`
-			: ''
-
-	return `<script lang="ts">
-${imports}${elements}
-${onMount}</script>
-
-<main style="font-family: system-ui; padding: 24px;">
-  <h1>${appName} (host)</h1>${stateMarkup}
-${sections || '  <p>No remotes mounted yet.</p>'}
+	return `${script}<main class="host">
+	<h1>${appName} (host)</h1>${stateMarkup}
+${sections || noRemotes}
 </main>
-`
-}
 
-/*
- *   MOUNT HINT
- ***************************************************************************************************/
-function mountHint(ref: RemoteRef, hostName: string): MountHint {
-	const el = `${camelCase(ref.name)}El`
-	const mount = ref.contract === 'component' ? `mountReact(m.default, ${el})` : `m.default(${el})`
-	const lines = [
-		`let ${el}: HTMLElement;`,
-		`onMount(() => {`,
-		`  let cancelled = false;`,
-		`  let cleanup: (() => void) | undefined;`,
-		`  void import("${ref.name}/App").then(m => {`,
-		`    if (!cancelled) cleanup = ${mount};`,
-		`  });`,
-		`  return () => {`,
-		`    cancelled = true;`,
-		`    cleanup?.();`,
-		`  };`,
-		`});`,
-		`// and in the markup: <div bind:this={${el}}></div>`,
-	]
-	if (ref.contract === 'component') {
-		lines.unshift(`import { mountReact } from "./react-bridge";`)
+<style>
+	.host {
+		font-family: system-ui;
+		padding: 24px;
 	}
-	return { intro: `To mount it, edit apps/${hostName}/src/app/app.svelte:`, lines }
+</style>
+`
 }

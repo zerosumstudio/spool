@@ -1,6 +1,6 @@
 {
 	"name": "@zerosumstudio/spool",
-	"version": "4.0.0",
+	"version": "1.0.0",
 	"description": "spool is a small CLI for building micro frontends",
 	"keywords": [
 		"micro-frontends",
@@ -27,49 +27,63 @@
 	"bin": {
 		"spool": "./dist/index.js"
 	},
+	"exports": {
+		"./vite": {
+			"types": "./dist/vite.d.ts",
+			"default": "./dist/vite.js"
+		},
+		"./package.json": "./package.json"
+	},
 	"files": [
-		"dist",
-		"README.md",
-		"LICENSE"
+		"dist"
 	],
 	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
+		"build": "tsdown",
+		"dev": "tsdown --watch",
 		"format": "prettier --write . --ignore-path ../../.gitignore --ignore-path ../../.prettierignore",
 		"format:check": "prettier --check . --ignore-path ../../.gitignore --ignore-path ../../.prettierignore",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
-		"prepublishOnly": "node -e \"const f=require('fs');f.copyFileSync('../../README.md','README.md');f.copyFileSync('../../LICENSE','LICENSE')\" && pnpm run verify",
+		"prepack": "node -e \"const f=require('fs');f.copyFileSync('../../README.md','README.md');f.copyFileSync('../../LICENSE','LICENSE')\"",
+		"prepublishOnly": "pnpm run verify",
 		"start": "node ./dist/index.js",
-		"test": "vitest",
+		"test": "vitest run",
+		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"test:e2e": "pnpm run build && playwright test -c e2e/playwright.config.ts",
-		"test:integration": "pnpm run build && vitest run --config vitest.integration.config.ts",
-		"test:run": "vitest run",
-		"type-check": "tsc --noEmit && tsc --noEmit -p e2e",
+		"type-check": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p src/core/templates/federation && tsc --noEmit -p src/core/templates/navigation && tsc --noEmit -p src/core/templates/sentry && vue-tsc --noEmit -p src/core/templates/federation/tsconfig.vue.json && svelte-check --workspace src/core/templates/federation --tsconfig ./tsconfig.svelte.json --threshold warning",
 		"verify": "pnpm run type-check && pnpm run lint && pnpm run format:check && pnpm run test:coverage && pnpm run build"
 	},
 	"dependencies": {
-		"@clack/prompts": "^1.7.0",
-		"commander": "^15.0.0",
-		"cross-spawn": "^7.0.6",
-		"picocolors": "^1.1.1",
-		"prettier": "^3.9.6",
-		"zod": "^4.4.3"
+		"@clack/prompts": "^1.9.0"
 	},
 	"devDependencies": {
-		"@playwright/test": "^1.64.1",
-		"@types/cross-spawn": "^6.0.6",
-		"@types/node": "^26.2.0",
-		"@vitest/coverage-v8": "^4.1.10",
+		"@module-federation/runtime": "2.7.0",
+		"@playwright/test": "^1.65.1",
+		"@sentry/react": "^11.17.0",
+		"@sentry/svelte": "^11.17.0",
+		"@sentry/vue": "^11.17.0",
+		"@types/node": "^26.6.6",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitest/coverage-v8": "^5.1.1",
 		"esbuild": "^0.28.2",
-		"node-pty": "^1.1.0",
-		"tsup": "^8.5.1",
-		"typescript": "^7.0.2",
-		"vitest": "^4.1.10"
+		"eslint-plugin-react-hooks": "^7.1.1",
+		"eslint-plugin-svelte": "^3.24.1",
+		"eslint-plugin-vue": "^10.12.1",
+		"jsdom": "^31.0.1",
+		"prettier": "^3.10.1",
+		"svelte": "^5.59.1",
+		"svelte-check": "^4.7.8",
+		"tsdown": "^0.23.7",
+		"typescript": "^6.0.3",
+		"vite": "^8.3.8",
+		"vitest": "^5.1.1",
+		"vue": "^3.5.46",
+		"vue-tsc": "^3.3.14"
 	},
 	"engines": {
-		"node": ">=22.12.0"
+		"node": ">=26"
 	},
 	"publishConfig": {
 		"access": "public",

@@ -1,12 +1,13 @@
-// NOTE: Ignore the weird spacing in this file, it's to make the generated code look nice in the templates.
 /*
- *   CREATE ADDONS
+ *   IMPORTS
  ***************************************************************************************************/
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import * as p from '@clack/prompts'
-import pc from 'picocolors'
-import type { AddonName, Manifest } from './config.js'
+import { printJsonFor } from './json-format.js'
+import { ask, canPrompt } from '../util/interactive.js'
+import { style } from '../util/style.js'
+import { ADDON_NAME_VALUES, type AddonName, type Manifest } from './config.js'
 import { NO_EXTRAS, type TemplateExtras } from './templates/index.js'
 import { sentryFiles, sentryNotes } from './templates/sentry.js'
 import { SENTRY_SDK } from './versions.js'
@@ -14,12 +15,7 @@ import { ladleFiles } from './templates/ladle.js'
 import { playwrightFiles } from './templates/playwright.js'
 import { stateFiles } from './templates/state.js'
 import { turboConfig, turboNotes } from './templates/turbo.js'
-import {
-	navigationFiles,
-	federationFiles,
-	navigationNotes,
-	federationNotes,
-} from './templates/composition.js'
+import { navigationFiles, navigationNotes } from './templates/composition.js'
 import {
 	ALIAS_FILE,
 	eslintConfig,
@@ -30,8 +26,8 @@ import {
 	vitestConfig,
 } from './templates/quality.js'
 import type { FileMap } from './filemap.js'
+import { CliError } from '../util/errors.js'
 import { splitList } from '../util/names.js'
-import { fail } from '../util/logger.js'
 
 /*
  *   TYPES
@@ -73,17 +69,7 @@ function navigationAddonFiles(m: Manifest): FileMap {
 			files[`${app.path}/${rel}`] = content
 		}
 	}
-	return files
-}
 
-function federationAddonFiles(m: Manifest): FileMap {
-	const files: FileMap = {}
-	for (const app of Object.values(m.apps)) {
-		if (app.type !== 'host' && !app.remotes.length) continue
-		for (const [rel, content] of Object.entries(federationFiles(m, app))) {
-			files[`${app.path}/${rel}`] = content
-		}
-	}
 	return files
 }
 
@@ -102,7 +88,7 @@ function testFiles(m: Manifest): FileMap {
 	return files
 }
 
-export const ADDONS: Record<AddonName, Addon> = {
+const DEFINITIONS: Record<AddonName, Addon> = {
 	ladle: {
 		label: 'Ladle',
 		hint: 'design-system package in packages/ui with a component workshop',
@@ -114,7 +100,7 @@ export const ADDONS: Record<AddonName, Addon> = {
 		files: () => ladleFiles(),
 		allowBuilds: ['@swc/core', 'msw'],
 		notes: m => [
-			`ladle: \`spool dev\` starts the component workshop with your apps, or ${runIn(m, 'ui', 'ladle')} runs it on its own`,
+			`ladle: \`spool dev\` starts the component workshop with your apps, or ${formatRunCommand(m, 'ui', 'ladle')} runs it on its own`,
 		],
 	},
 	playwright: {
@@ -128,7 +114,7 @@ export const ADDONS: Record<AddonName, Addon> = {
 		files: (m, extras) => playwrightFiles(m, extras ?? NO_EXTRAS),
 		allowBuilds: [],
 		notes: m => [
-			`playwright: run \`npx playwright install\` once, then ${runIn(m, 'e2e', 'test')}`,
+			`playwright: run \`npx playwright install\` once, then ${formatRunCommand(m, 'e2e', 'test')}`,
 		],
 	},
 	lint: {
@@ -163,7 +149,7 @@ export const ADDONS: Record<AddonName, Addon> = {
 	},
 	state: {
 		label: 'Shared state',
-		hint: 'a state machine every app shares as a federation singleton (@zerosumstudio/clutch)',
+		hint: 'a store every app shares as a federation singleton (@zerosumstudio/clutch)',
 		unavailable: () => undefined,
 		present: (_root, m) => m.shared.includes('@zerosumstudio/clutch'),
 		apply: m => {
@@ -178,9 +164,9 @@ export const ADDONS: Record<AddonName, Addon> = {
 		files: m => stateFiles(m),
 		allowBuilds: [],
 		notes: m => [
-			`state: every app got src/state/counter.ts; all copies resolve to one machine per page${
+			`state: every app got src/state/counter.ts; all copies resolve to one store per page${
 				Object.values(m.apps).some(app => app.framework === 'react')
-					? ' (react apps: useMachine from "@zerosumstudio/clutch/react")'
+					? ' (react apps: useStore from "@zerosumstudio/clutch/react")'
 					: ''
 			}`,
 		],
@@ -208,36 +194,56 @@ export const ADDONS: Record<AddonName, Addon> = {
 		allowBuilds: [],
 		notes: () => navigationNotes(),
 	},
-	federation: {
-		label: 'Federation',
-		hint: 'a <Remote> primitive and the remote registry, in src/federation',
-		unavailable: m =>
-			Object.values(m.apps).some(app => app.type === 'host' || app.remotes.length)
-				? undefined
-				: 'Federation needs an app that consumes remotes.',
-		present: (_root, m) => m.addons.includes('federation'),
-		apply: m => enableAddon(m, 'federation'),
-		files: federationAddonFiles,
-		allowBuilds: [],
-		notes: (_m, composed) => federationNotes(composed),
-	},
+}
+
+/** The addon, with every JSON file it writes printed the way prettier prints it. */
+function withPrintedJson(addon: Addon): Addon {
+	return {
+		...addon,
+		files: (m, extras) => printJsonFiles(addon.files(m, extras)),
+	}
+}
+
+/**
+ * Whatever an addon's templates write, its JSON files come out the way prettier prints them,
+ * so a workspace with no prettier installed still starts out formatted. A template whose JSON
+ * does not parse is a bug in spool, so it throws.
+ */
+function printJsonFiles(files: FileMap): FileMap {
+	return Object.fromEntries(
+		Object.entries(files).map(([rel, content]) => [
+			rel,
+			rel.endsWith('.json') ? printJsonFor(rel, JSON.parse(content)) : content,
+		]),
+	)
+}
+
+export const ADDONS: Record<AddonName, Addon> = {
+	ladle: withPrintedJson(DEFINITIONS.ladle),
+	playwright: withPrintedJson(DEFINITIONS.playwright),
+	lint: withPrintedJson(DEFINITIONS.lint),
+	test: withPrintedJson(DEFINITIONS.test),
+	turbo: withPrintedJson(DEFINITIONS.turbo),
+	state: withPrintedJson(DEFINITIONS.state),
+	sentry: withPrintedJson(DEFINITIONS.sentry),
+	navigation: withPrintedJson(DEFINITIONS.navigation),
 }
 
 export type { AddonName } from './config.js'
 
-export const ADDON_NAMES = Object.keys(ADDONS) as AddonName[]
+export const ADDON_NAMES: AddonName[] = [...ADDON_NAME_VALUES]
 
 export function templateExtras(addons: AddonName[]): TemplateExtras {
 	return {
 		stateExample: addons.includes('state'),
 		uiButton: addons.includes('state') && addons.includes('ladle'),
 		sentry: addons.includes('sentry'),
-		composed: addons.includes('federation'),
+		composed: addons.includes('navigation'),
 	}
 }
 
 export function isAddonName(value: string): value is AddonName {
-	return (ADDON_NAMES as string[]).includes(value)
+	return (ADDON_NAME_VALUES as readonly string[]).includes(value)
 }
 
 export function parseAddonList(value: string, m: Manifest): AddonName[] {
@@ -245,43 +251,43 @@ export function parseAddonList(value: string, m: Manifest): AddonName[] {
 	for (const entry of splitList(value)) {
 		if (entry === 'none') continue
 		if (entry === 'shell') {
-			names.push('navigation', 'federation')
-			continue
+			throw new CliError('The "shell" addon was renamed to "navigation".', 'INVALID_VALUE')
 		}
 		if (!isAddonName(entry)) {
-			fail(`Unknown addon "${entry}". Use ${ADDON_NAMES.join(' or ')}, or "none".`)
+			throw new CliError(
+				`Unknown addon "${entry}". Use ${ADDON_NAMES.join(' or ')}, or "none".`,
+				'INVALID_VALUE',
+			)
 		}
 		const reason = ADDONS[entry].unavailable(m)
-		if (reason) fail(reason)
+		if (reason) throw new CliError(reason, 'INVALID_VALUE')
 		names.push(entry)
 	}
+
 	return [...new Set(names)]
 }
 
 /** Multiselect over `names`. Non-TTY runs get no addons, since a prompt could never resolve. */
-export async function promptAddons(
-	message: string,
-	names: AddonName[],
-): Promise<AddonName[] | null> {
-	if (!names.length || !process.stdin.isTTY) return []
+export async function promptAddons(message: string, names: AddonName[]): Promise<AddonName[]> {
+	if (!names.length || !canPrompt()) return []
 
-	const answer = await p.multiselect({
-		message: `${message} ${pc.dim('(space selects, enter confirms)')}`,
-		options: names.map(name => ({
-			value: name,
-			label: ADDONS[name].label,
-			hint: ADDONS[name].hint,
-		})),
-		required: false,
-	})
-	return p.isCancel(answer) ? null : (answer as AddonName[])
+	return ask(
+		p.multiselect({
+			message: `${message} ${style.dim('(space selects, enter confirms)')}`,
+			options: names.map(name => ({
+				value: name,
+				label: ADDONS[name].label,
+				hint: ADDONS[name].hint,
+			})),
+			required: false,
+		}),
+	)
 }
 
 /*
  *   HELPERS
  ***************************************************************************************************/
-
-function runIn(m: Manifest, pkg: string, script: string): string {
+function formatRunCommand(m: Manifest, pkg: string, script: string): string {
 	if (m.packageManager === 'pnpm') return `\`pnpm --filter ${pkg} ${script}\``
 	if (m.packageManager === 'yarn') return `\`yarn workspace ${pkg} ${script}\``
 	return `\`npm run ${script} --workspace ${pkg}\``

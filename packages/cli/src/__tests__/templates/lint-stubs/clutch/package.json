@@ -1,0 +1,13 @@
+{
+	"name": "@zerosumstudio/clutch",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./index.d.ts"
+		},
+		"./react": {
+			"types": "./react.d.ts"
+		}
+	}
+}

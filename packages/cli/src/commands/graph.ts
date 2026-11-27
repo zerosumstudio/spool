@@ -21,7 +21,7 @@ interface GraphApp {
 	exposes: string[]
 }
 
-interface GraphData {
+export interface GraphData {
 	name: string
 	apps: GraphApp[]
 	shared: string[]
@@ -30,19 +30,15 @@ interface GraphData {
 /*
  *   GRAPH
  ***************************************************************************************************/
-export async function graph(opts: GraphOptions = {}): Promise<void> {
+export async function graph(opts: GraphOptions = {}): Promise<GraphData> {
 	const ws = await requireWorkspace()
 	const data = buildGraph(ws)
 
-	if (opts.json) {
-		log.plain(JSON.stringify(data, null, 2))
-		return
-	}
-	if (opts.dot) {
-		log.plain(renderDot(data))
-		return
-	}
-	log.plain(renderTree(data))
+	if (opts.json) return data
+	if (opts.dot) log.plain(renderDot(data))
+	else log.plain(renderTree(data))
+
+	return data
 }
 
 /*

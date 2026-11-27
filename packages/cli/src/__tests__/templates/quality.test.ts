@@ -98,8 +98,8 @@ describe('test addon', () => {
 		const manifest = workspace(['test'])
 		const aliases = appFiles(manifest, 'shell', manifest.apps.shell!)[ALIAS_FILE]!
 
-		expect(aliases).toContain('"browse/App": resolvePath')
-		expect(aliases).toContain('remote-component.tsx')
+		expect(aliases).toContain("'browse/App': resolvePath")
+		expect(aliases).toContain('remote-component.ts')
 	})
 
 	it('writes a stub per contract, not per remote', () => {
@@ -110,7 +110,7 @@ describe('test addon', () => {
 		})
 		const files = appFiles(manifest, 'shell', manifest.apps.shell!)
 
-		expect(files['src/test/remote-component.tsx']).toBeDefined()
+		expect(files['src/test/remote-component.ts']).toBeDefined()
 		expect(files['src/test/remote-mount.ts']).toBeDefined()
 	})
 
@@ -126,8 +126,8 @@ describe('test addon', () => {
 		})
 		const files = appFiles(manifest, 'browse', manifest.apps.browse!)
 
-		expect(files[ALIAS_FILE]).toContain('"widget/App": resolvePath')
-		expect(files[ALIAS_FILE]).toContain('"widget/Panel": resolvePath')
+		expect(files[ALIAS_FILE]).toContain("'widget/App': resolvePath")
+		expect(files[ALIAS_FILE]).toContain("'widget/Panel': resolvePath")
 		expect(files['src/test/remote-mount.ts']).toBeDefined()
 	})
 
@@ -135,8 +135,8 @@ describe('test addon', () => {
 		const manifest = workspace(['test'])
 		const files = appFiles(manifest, 'browse', manifest.apps.browse!)
 
-		expect(files['vitest.config.ts']).toContain('"@": resolvePath')
-		expect(files[ALIAS_FILE]).not.toContain('/App"')
+		expect(files['vitest.config.ts']).toContain("'@': resolvePath")
+		expect(files[ALIAS_FILE]).not.toContain("/App'")
 	})
 
 	it('regenerates a host config when its remotes change', () => {
@@ -155,7 +155,7 @@ describe('test addon', () => {
 
 		await expect(parses(files['vitest.config.ts']!)).resolves.toBeDefined()
 		await expect(parses(files[ALIAS_FILE]!)).resolves.toBeDefined()
-		await expect(parses(files['src/test/remote-component.tsx']!, 'tsx')).resolves.toBeDefined()
+		await expect(parses(files['src/test/remote-component.ts']!, 'ts')).resolves.toBeDefined()
 	})
 
 	it('adds its deps and scripts only when enabled', () => {
@@ -207,10 +207,10 @@ describe('generated files lint and test clean', () => {
 		const manifest = workspace(['test'])
 		const source = remoteAliasModule(manifest, manifest.apps.browse!)
 		expect(source).not.toContain('node:path')
-		expect(source).toContain('export const remoteAliases: Record<string, string> = {};')
+		expect(source).toContain('export const remoteAliases: Record<string, string> = {}')
 	})
 
 	it('keeps eslint out of the generated declarations', () => {
-		expect(eslintConfig(workspace(['lint']))).toContain('".spool"')
+		expect(eslintConfig(workspace(['lint']))).toContain("'.spool'")
 	})
 })

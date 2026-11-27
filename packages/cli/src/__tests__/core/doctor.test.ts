@@ -2,7 +2,7 @@
  *   IMPORTS
  ***************************************************************************************************/
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { diagnose, diagnoseRemotes } from '../../core/doctor.js'
 import { freshDir, removeDir, makeWorkspace, host, remote } from '../helpers.js'
@@ -15,8 +15,6 @@ let root: string
 
 beforeEach(() => {
 	root = freshDir('spool-doctor-')
-	// Every workspace ships this helper; its absence is itself a diagnostic.
-	writeFileSync(join(root, 'spool.vite.ts'), '// stub\n')
 })
 
 afterEach(() => {
@@ -103,13 +101,41 @@ describe('diagnose', () => {
 	})
 
 	/*
-	 *   RUNTIME HELPER
+	 *   FILES SPOOL NO LONGER GENERATES
 	 ***************************************************************************************************/
-	it('flags a missing spool.vite.ts helper', () => {
-		rmSync(join(root, 'spool.vite.ts'))
-		const ws = withFolders({ shell: host({ remotes: ['dashboard'] }), dashboard: remote() })
-		const issue = diagnose(ws).find(i => i.message.includes('spool.vite.ts'))
-		expect(issue).toMatchObject({ level: 'error' })
+	describe('leftovers from an older spool', () => {
+		it('flags a public/_headers in any app, which would clash with the one written at build', () => {
+			const ws = withFolders({ shell: host({ remotes: ['dashboard'] }), dashboard: remote() })
+			mkdirSync(join(root, 'apps/dashboard/public'), { recursive: true })
+			writeFileSync(join(root, 'apps/dashboard/public/_headers'), '/*\n  X-Old: 1\n')
+
+			const issue = diagnose(ws).find(i => i.code === 'leftover-headers')
+
+			expect(issue).toMatchObject({ level: 'warn', app: 'dashboard' })
+			expect(issue?.message).toContain('spool upgrade')
+		})
+
+		it('flags a spool.vite.ts left at the root', () => {
+			writeFileSync(join(root, 'spool.vite.ts'), '// old helper\n')
+			const ws = withFolders({ shell: host({ remotes: ['dashboard'] }), dashboard: remote() })
+
+			expect(diagnose(ws).find(i => i.code === 'leftover-helper')).toMatchObject({
+				level: 'warn',
+			})
+		})
+
+		it('says nothing about a workspace that has neither', () => {
+			const ws = withFolders({ shell: host({ remotes: ['dashboard'] }), dashboard: remote() })
+
+			expect(diagnose(ws).map(i => i.code)).not.toContain('leftover-headers')
+			expect(diagnose(ws).map(i => i.code)).not.toContain('leftover-helper')
+		})
+
+		it('no longer asks for a spool.vite.ts', () => {
+			const ws = withFolders({ shell: host({ remotes: ['dashboard'] }), dashboard: remote() })
+
+			expect(messages(diagnose(ws)).join(' ')).not.toContain('missing')
+		})
 	})
 
 	/*
@@ -168,10 +194,22 @@ describe('diagnose', () => {
 	it('warns when a framework runtime is not shared at all', () => {
 		const ws = withFolders({
 			shell: host({ remotes: ['widget'] }),
+			widget: remote({ framework: 'vue', path: 'apps/widget' }),
+		})
+		const issue = diagnose(ws).find(i => i.message.includes('"vue" is not in "shared"'))
+		expect(issue).toMatchObject({ level: 'warn' })
+	})
+
+	it('does not expect svelte in shared', () => {
+		const ws = withFolders({
+			shell: host({ remotes: ['widget'] }),
 			widget: remote({ framework: 'svelte', path: 'apps/widget' }),
 		})
-		const issue = diagnose(ws).find(i => i.message.includes('"svelte" is not in "shared"'))
-		expect(issue).toMatchObject({ level: 'warn' })
+		expect(
+			diagnose(ws).some(
+				i => i.code === 'framework-not-shared' && i.message.includes('svelte'),
+			),
+		).toBe(false)
 	})
 
 	it('checks subpath share entries against their package, not the subpath', () => {
@@ -193,14 +231,13 @@ describe('diagnose', () => {
 	 *   SERVER FS ALLOW
 	 ***************************************************************************************************/
 	describe('server.fs.allow', () => {
-		const withAllow = (allow: string[], helper = 'function fsAllow() {}\n') => {
-			writeFileSync(join(root, 'spool.vite.ts'), helper)
+		const withAllow = (allow: string[]) => {
 			const ws = withFolders({ shell: host() })
 			ws.manifest.server = { fs: { allow } }
 			return ws
 		}
 
-		it('stays quiet when every entry exists and the helper supports it', () => {
+		it('stays quiet when every entry exists', () => {
 			mkdirSync(join(root, 'contracts'))
 			expect(diagnose(withAllow(['contracts']))).toEqual([])
 		})
@@ -220,20 +257,11 @@ describe('diagnose', () => {
 			])
 		})
 
-		it('leaves an entry with an env reference to the helper', () => {
+		it('leaves an entry with an env reference to the vite plugin', () => {
 			expect(diagnose(withAllow(['${CONTRACTS_DIR}']))).toEqual([])
 		})
 
-		it('points an older helper at spool upgrade', () => {
-			mkdirSync(join(root, 'contracts'))
-			const issues = diagnose(withAllow(['contracts'], '// stub\n'))
-			expect(issues).toEqual([
-				expect.objectContaining({ level: 'warn', code: 'helper-stale-fs-allow' }),
-			])
-			expect(issues[0]!.message).toMatch(/spool upgrade/)
-		})
-
-		it('says nothing about an older helper when the setting is absent', () => {
+		it('says nothing when the setting is absent', () => {
 			expect(diagnose(withFolders({ shell: host() }))).toEqual([])
 		})
 	})

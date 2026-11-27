@@ -8,6 +8,7 @@ import { create } from '../../commands/create.js'
 import { ci } from '../../commands/ci.js'
 import { log } from '../../util/logger.js'
 import { runCaptured } from '../../util/exec.js'
+import { runCli } from '../../cli/run.js'
 import { freshDir, removeDir } from '../helpers.js'
 
 /*
@@ -93,7 +94,7 @@ describe('ci', () => {
 
 	it('still writes the check workflow when nothing deploys', async () => {
 		const manifest = JSON.parse(readFileSync(join(dir, 'spool.json'), 'utf8'))
-		for (const app of Object.values(manifest.apps) as { deploy?: string }[]) {
+		for (const app of Object.values<{ deploy?: string }>(manifest.apps)) {
 			delete app.deploy
 		}
 		writeFileSync(join(dir, 'spool.json'), JSON.stringify(manifest))
@@ -131,7 +132,7 @@ describe('ci', () => {
 		const yaml = readFileSync(workflow('dashboard'), 'utf8')
 
 		expect(yaml).toContain('contents: read')
-		expect(yaml).toContain('cancel-in-progress: true')
+		expect(yaml).toContain('cancel-in-progress: false')
 		expect(yaml).toContain('needs: check')
 		expect(yaml).toContain('persist-credentials: false')
 	})
@@ -139,8 +140,8 @@ describe('ci', () => {
 	it('uses the workspace engines.node floor for the node version', async () => {
 		await ci({})
 		const yaml = readFileSync(join(dir, '.github/workflows/ci.yml'), 'utf8')
-		// create() scaffolds engines.node as ">=22.13.0".
-		expect(yaml).toContain("node-version: '22'")
+		// create() scaffolds engines.node as ">=26".
+		expect(yaml).toContain("node-version: '26'")
 	})
 
 	it('falls back to packages/** when the workspace has no shared package folder', async () => {
@@ -161,34 +162,16 @@ describe('ci', () => {
 		expect(yaml).toContain("'packages/ui/**'")
 	})
 
-	it('leaves actions on their tag by default, without touching the network', async () => {
+	it('pins every action to a commit, without touching the network', async () => {
 		await ci({})
 		const yaml = readFileSync(join(dir, '.github/workflows/ci.yml'), 'utf8')
 
-		expect(yaml).toContain('actions/checkout@v7')
+		expect(yaml).toMatch(/actions\/checkout@[0-9a-f]{40} # v7\.\d+\.\d+/)
+		expect(yaml).toMatch(/actions\/setup-node@[0-9a-f]{40} # v7\.\d+\.\d+/)
 		expect(runCaptured).not.toHaveBeenCalled()
 	})
 
-	it('--pin resolves actions to a commit sha', async () => {
-		vi.mocked(runCaptured).mockResolvedValue({
-			code: 0,
-			output: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2\trefs/tags/v7',
-		})
-
-		await ci({ pin: true })
-		const yaml = readFileSync(join(dir, '.github/workflows/ci.yml'), 'utf8')
-
-		expect(yaml).toContain('actions/checkout@a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2')
-	})
-
-	it('--pin falls back to the tag and warns when it cannot reach the network', async () => {
-		vi.mocked(runCaptured).mockResolvedValue({ code: 128, output: '' })
-		const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
-
-		await ci({ pin: true })
-		const yaml = readFileSync(join(dir, '.github/workflows/ci.yml'), 'utf8')
-
-		expect(yaml).toContain('actions/checkout@v7')
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining('Could not resolve'))
+	it('has no --pin: actions are always pinned', async () => {
+		await expect(runCli(['ci', '--pin'])).resolves.toBe(2)
 	})
 })
